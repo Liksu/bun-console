@@ -1,0 +1,510 @@
+package dev.jsconsole.service
+
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.components.Service
+import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.FileEditorManagerEvent
+import com.intellij.openapi.fileEditor.FileEditorManagerListener
+import com.intellij.openapi.editor.EditorFactory
+import com.intellij.openapi.editor.event.DocumentEvent
+import com.intellij.openapi.editor.event.DocumentListener
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.LocalFileSystem
+import com.google.gson.JsonObject
+import dev.jsconsole.runtime.BunConsoleProcess
+import dev.jsconsole.runtime.BunRuntimeLocator
+import dev.jsconsole.runtime.BootstrapManager
+import dev.jsconsole.runtime.ConsoleImports
+import dev.jsconsole.settings.JsConsoleSettings
+import dev.jsconsole.ui.ConsoleStyle
+import java.nio.file.Path
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionException
+import java.util.concurrent.Executors
+
+@Service(Service.Level.PROJECT)
+class JsConsoleProjectService(private val project: Project) : Disposable {
+    private val background = Executors.newSingleThreadExecutor { task -> Thread(task, "JS Console lifecycle").apply { isDaemon = true } }
+    enum class OutputKind { NORMAL, ERROR, JAVASCRIPT, RESULT, CLEAR }
+    private data class Entry(val text: String, val kind: OutputKind, val styles: List<ConsoleStyle>)
+    private val entries = mutableListOf<Entry>()
+    private var append: ((String, OutputKind, List<ConsoleStyle>) -> Unit)? = null
+    private var statusChanged: ((String) -> Unit)? = null
+    private var generation = 0L
+    private var command = 0L
+    private var runtime: BunConsoleProcess? = null
+    private var ready: CompletableFuture<BunConsoleProcess>? = null
+    private var contextReady: CompletableFuture<BunConsoleProcess>? = null
+    private var context: VirtualFile? = null
+    private data class FileBinding(val exported: String, val local: String)
+    private sealed interface Addition {
+        data class Symbol(val path: String, val exported: String, val local: String) : Addition
+        data class File(val path: String, val bindings: List<FileBinding>) : Addition
+    }
+    private val additions = mutableListOf<Addition>()
+    private val stalePaths = mutableSetOf<String>()
+    private val restartPaths = mutableSetOf<String>()
+    private val modifiedVersions = mutableMapOf<String, Long>()
+    private val knownContextPaths = mutableSetOf<String>()
+    private var editVersion = 0L
+    private var refreshing = false
+    @Volatile private var addedFilePaths: Set<String> = emptySet()
+    private var disposed = false
+    val pinned: Boolean get() = context?.path in addedFilePaths
+    val hasCurrentFile: Boolean get() = context != null
+    val history = mutableListOf<String>()
+    private var currentNames = emptySet<String>()
+    private var addedNames = emptySet<String>()
+    @Volatile var contextNames: Set<String> = emptySet()
+        private set
+    var status: String = "Stopped"
+        private set
+    val restartRequired: Boolean get() = restartPaths.isNotEmpty()
+
+    data class ContextTab(val key: String, val label: String, val path: String?)
+
+    fun contextTabs(): List<ContextTab> {
+        val paths = listOfNotNull(context?.path) + additions.filterIsInstance<Addition.File>()
+            .map(Addition.File::path).filterNot { it == context?.path }
+        val labels = shortestUniqueFileLabels(paths)
+        val main = ContextTab("main", "${context?.path?.let(labels::get) ?: "JavaScript"} · follows editor" +
+            (if (pinned) " · pinned" else ""), context?.path)
+        return listOf(main) + additions.filterIsInstance<Addition.File>()
+            .filterNot { it.path == context?.path }
+            .map { ContextTab(it.path, "${labels.getValue(it.path)} · pinned", it.path) }
+    }
+
+    private fun shortestUniqueFileLabels(paths: List<String>): Map<String, String> {
+        val components = paths.associateWith { it.replace('\\', '/').split('/').filter(String::isNotEmpty) }
+        return paths.associateWith { path ->
+            val parts = components.getValue(path)
+            (1..parts.size).firstNotNullOfOrNull { count ->
+                val suffix = parts.takeLast(count)
+                suffix.joinToString("/").takeIf { label ->
+                    components.values.count { it.takeLast(count).joinToString("/") == label } == 1
+                }
+            } ?: path.replace('\\', '/')
+        }
+    }
+
+    init {
+        EditorFactory.getInstance().eventMulticaster.addDocumentListener(object : DocumentListener {
+            override fun documentChanged(event: DocumentEvent) {
+                val changed = FileDocumentManager.getInstance().getFile(event.document) ?: return
+                if (ready == null || changed.extension?.lowercase() !in setOf("js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx")) return
+                val markChanged = {
+                    modifiedVersions[changed.path] = ++editVersion
+                    if (changed == context || changed.path in addedFilePaths) {
+                        stalePaths.add(changed.path)
+                        updateContextStatus()
+                    }
+                }
+                if (ApplicationManager.getApplication().isDispatchThread) markChanged()
+                else onEdt(generation) { markChanged() }
+            }
+        }, this)
+        project.messageBus.connect(this).subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, object : FileEditorManagerListener {
+            override fun selectionChanged(event: FileEditorManagerEvent) {
+                if (ready != null) followEditor()
+            }
+        })
+    }
+
+    fun attach(append: (String, OutputKind, List<ConsoleStyle>) -> Unit, statusChanged: (String) -> Unit) {
+        this.append = append
+        this.statusChanged = statusChanged
+        entries.forEach { (text, kind, styles) -> append(text, kind, styles) }
+        statusChanged(status)
+        if (ready == null) restart()
+    }
+
+    fun detach() { append = null; statusChanged = null }
+
+    fun clearOutput() {
+        entries.clear()
+        append?.invoke("", OutputKind.CLEAR, emptyList())
+    }
+
+    fun stop(): CompletableFuture<*> {
+        generation++
+        runtime?.close()
+        return runtime?.termination ?: CompletableFuture.completedFuture(null)
+    }
+
+    fun togglePin() {
+        val file = context ?: return
+        if (isFileAdded(file)) removeFile(file) else addFile(file)
+    }
+
+    fun restart() {
+        val epoch = ++generation
+        stalePaths.clear()
+        restartPaths.clear()
+        modifiedVersions.clear()
+        knownContextPaths.clear()
+        refreshing = false
+        runtime?.close()
+        runtime = null
+        currentNames = emptySet()
+        addedNames = emptySet()
+        contextNames = emptySet()
+        context = activeFile()
+        updateStatus("Starting Bun…")
+        write("\n— Starting fresh runtime —\n")
+        val selectedBun = JsConsoleSettings.getInstance().bunPath
+        val startup = CompletableFuture.supplyAsync({
+            val executable = BunRuntimeLocator.locate(selectedBun)
+            val script = BootstrapManager.materialize()
+            val cwd = Path.of(project.basePath ?: System.getProperty("user.home"))
+            BunConsoleProcess(executable, script, cwd,
+                { text, error -> onEdt(epoch) { write(text, error) } },
+                { reason -> onEdt(epoch) { updateStatus("Stopped · $reason"); write("$reason\n", true) } })
+        }, background).thenCompose { backend ->
+            val launched = CompletableFuture<BunConsoleProcess>()
+            onEdt(epoch, { backend.close(); launched.completeExceptionally(IllegalStateException("Startup superseded")) }) {
+                runtime = backend
+                backend.start().whenComplete { value, error ->
+                    if (error == null) launched.complete(value) else launched.completeExceptionally(error)
+                }
+            }
+            launched
+        }
+        ready = startup
+        loadContext(startup, epoch)
+    }
+
+    fun execute(source: String, styles: List<ConsoleStyle> = emptyList()) {
+        if (source.isBlank()) return
+        refreshContextIfNeeded()
+        val id = ++command
+        history.add(source)
+        if (history.size > 500) history.removeAt(0)
+        write("\n[$id] > ")
+        writeEntry(source, OutputKind.JAVASCRIPT, styles)
+        write("\n")
+        val epoch = generation
+        val backend = contextReady ?: return
+        backend.thenComposeAsync({
+            val evaluation = ReadAction.computeBlocking<ConsoleImports.Evaluation, RuntimeException> {
+                ConsoleImports.prepare(project, source)
+            }
+            it.request("eval", mapOf("code" to evaluation.code, "imports" to evaluation.imports,
+                "declarations" to evaluation.declarations))
+        }, background)
+            .whenComplete { result, error -> onEdt(epoch) {
+                if (error != null) write("[$id] ${message(error)}\n", true)
+                else {
+                    write("[$id] ")
+                    writeEntry(result.get("text")?.asString ?: "undefined", OutputKind.RESULT)
+                    write("\n")
+                }
+            } }
+    }
+
+    /** Refresh edited context modules at the next console interaction, without resetting REPL variables. */
+    fun refreshContextIfNeeded() {
+        if (refreshing || modifiedVersions.isEmpty() || ready == null) return
+        val previous = contextReady ?: return
+        val epoch = generation
+        // A previously selected file can wait until it becomes the current
+        // context again; it does not require a full runtime restart now.
+        val versions = modifiedVersions.filterKeys {
+            it == context?.path || it in addedFilePaths || it !in knownContextPaths
+        }
+        if (versions.isEmpty()) return
+        val direct = versions.keys.filter { it == context?.path || it in addedFilePaths }
+        refreshing = true
+        val next = previous.thenComposeAsync({ backend ->
+            backend.request("cached_files").handle { result, error ->
+                val cached = if (error == null) result.getAsJsonArray("paths").map { normalizePath(it.asString) }.toSet()
+                    else emptySet()
+                val dependent = versions.keys.filter { it !in direct && normalizePath(it) in cached }
+                dependent to error
+            }.thenCompose { (dependent, cacheError) ->
+                var chain = CompletableFuture.completedFuture(emptyList<ReloadResult>())
+                for (path in direct) {
+                    chain = chain.thenCompose { prior ->
+                        val file = (context?.takeIf { it.path == path } ?: LocalFileSystem.getInstance().findFileByPath(path))
+                        if (file == null || !file.isValid) {
+                            CompletableFuture.completedFuture(prior + ReloadResult(path, null, IllegalStateException("File unavailable")))
+                        } else {
+                            saveContext(file, epoch).thenCompose { backend.request("reload_file", mapOf("path" to path)) }
+                                .handle { result, error -> prior + ReloadResult(path, result, error) }
+                        }
+                    }
+                }
+                chain.thenApply { results ->
+                    onEdt(epoch) {
+                        for (path in dependent) restartPaths.add(path)
+                        if (cacheError != null) restartPaths.addAll(versions.keys)
+                        for (outcome in results) {
+                            if (outcome.error != null) {
+                                restartPaths.add(outcome.path)
+                                write("Could not update ${Path.of(outcome.path).fileName}: ${message(outcome.error)}\n", true)
+                                continue
+                            }
+                            val result = outcome.result!!
+                            if (outcome.path == context?.path) {
+                                currentNames = result.getAsJsonArray("names").map { it.asString }.toSet()
+                            }
+                            val index = additions.indexOfFirst { it is Addition.File && it.path == outcome.path }
+                            if (index >= 0) {
+                                val bindings = result.getAsJsonObject("file").getAsJsonArray("bindings").map {
+                                    FileBinding(it.asJsonObject.get("exported").asString, it.asJsonObject.get("local").asString)
+                                }
+                                additions[index] = Addition.File(outcome.path, bindings)
+                            }
+                            stalePaths.remove(outcome.path)
+                            restartPaths.remove(outcome.path)
+                        }
+                        addedNames = additions.flatMap {
+                            when (it) {
+                                is Addition.Symbol -> listOf(it.local)
+                                is Addition.File -> it.bindings.map(FileBinding::local)
+                            }
+                        }.toSet()
+                        refreshCompletionNames()
+                        for ((path, version) in versions) {
+                            if (modifiedVersions[path] == version) modifiedVersions.remove(path)
+                        }
+                        refreshing = false
+                        updateContextStatus()
+                        if (modifiedVersions.any { (path, version) -> versions[path] != version }) {
+                            refreshContextIfNeeded()
+                        }
+                    }
+                    backend
+                }
+            }
+        }, background)
+        contextReady = next
+        next.whenComplete { _, error -> if (error != null) onEdt(epoch) {
+            refreshing = false
+            restartPaths.addAll(versions.keys)
+            updateContextStatus()
+            write("Could not refresh context: ${message(error)}\n", true)
+        } }
+    }
+
+    private data class ReloadResult(val path: String, val result: JsonObject?, val error: Throwable?)
+
+    private fun normalizePath(path: String): String =
+        path.replace('\\', '/').let { if (System.getProperty("os.name").startsWith("Windows")) it.lowercase() else it }
+
+    fun addSymbol(file: VirtualFile, exported: String, local: String? = null) {
+        if (!file.isValid || !file.isInLocalFileSystem) return
+        if (ready == null) restart()
+        val epoch = generation
+        val saved = saveContext(file, epoch)
+        val backend = contextReady ?: return
+        backend.thenCombine(saved) { process, _ -> process }
+            .thenComposeAsync({ process ->
+                process.request("add_symbol", mapOf("path" to file.path, "imported" to exported, "local" to local))
+            }, background)
+            .whenComplete { result, error -> onEdt(epoch) {
+                if (error != null) write("Could not add $exported: ${message(error)}\n", true)
+                else {
+                    val local = result.get("local").asString
+                    val addition = Addition.Symbol(file.path, exported, local)
+                    if (addition !in additions) {
+                        additions.add(addition)
+                    }
+                    addedNames = addedNames + local
+                    refreshCompletionNames()
+                    write("Added ${file.name}: $exported as $local\n")
+                }
+            } }
+    }
+
+    fun isFileAdded(file: VirtualFile): Boolean = file.path in addedFilePaths
+
+    fun addFile(file: VirtualFile) {
+        if (!file.isValid || !file.isInLocalFileSystem) return
+        if (isFileAdded(file)) return
+        if (ready == null) restart()
+        val epoch = generation
+        val saved = saveContext(file, epoch)
+        val backend = contextReady ?: return
+        backend.thenCombine(saved) { process, _ -> process }
+            .thenComposeAsync({ process -> process.request("add_file", mapOf("path" to file.path)) }, background)
+            .whenComplete { result, error -> onEdt(epoch) {
+                if (error != null) write("Could not add ${file.name}: ${message(error)}\n", true)
+                else {
+                    val bindings = result.getAsJsonArray("bindings").map { FileBinding(it.asJsonObject.get("exported").asString, it.asJsonObject.get("local").asString) }
+                    val unsupported = result.getAsJsonArray("unsupported").map { it.asString }
+                    if (additions.none { it is Addition.File && it.path == file.path }) {
+                        additions.add(Addition.File(file.path, bindings))
+                    }
+                    addedFilePaths = addedFilePaths + file.path
+                    knownContextPaths.add(file.path)
+                    addedNames = addedNames + bindings.map { it.local }
+                    refreshCompletionNames()
+                    updateContextStatus()
+                    val aliases = bindings.filter { it.exported != it.local }.joinToString { "${it.exported} → ${it.local}" }
+                    write("Added file ${file.name}: ${bindings.size} exports" +
+                        (if (aliases.isEmpty()) "" else "; aliases: $aliases") +
+                        (if (unsupported.isEmpty()) "" else "; unsupported: ${unsupported.joinToString()}") + "\n")
+                }
+            } }
+    }
+
+    fun removeFile(file: VirtualFile) {
+        if (!isFileAdded(file)) return
+        val epoch = generation
+        val backend = contextReady ?: return
+        backend.thenComposeAsync({ process -> process.request("remove_file", mapOf("path" to file.path)) }, background)
+            .whenComplete { _, error -> onEdt(epoch) {
+                if (error != null) write("Could not remove ${file.name}: ${message(error)}\n", true)
+                else {
+                    additions.removeAll { it is Addition.File && it.path == file.path }
+                    stalePaths.remove(file.path)
+                    restartPaths.remove(file.path)
+                    modifiedVersions.remove(file.path)
+                    addedFilePaths = addedFilePaths - file.path
+                    addedNames = additions.flatMap {
+                        when (it) {
+                            is Addition.Symbol -> listOf(it.local)
+                            is Addition.File -> it.bindings.map(FileBinding::local)
+                        }
+                    }.toSet()
+                    refreshCompletionNames()
+                    write("Removed file ${file.name} from JS Console context\n")
+                    loadContext(backend, epoch)
+                }
+            } }
+    }
+
+    private fun followEditor() {
+        val next = activeFile()
+        if (next == context) return
+        context = next
+        loadContext(contextReady ?: ready ?: return, generation)
+    }
+
+    private fun loadContext(startup: CompletableFuture<BunConsoleProcess>, epoch: Long) {
+        val file = context
+        val toRestore = additions.toList()
+        val saved = saveContext(file, epoch)
+        updateStatus("Loading · ${file?.name ?: "plain JavaScript"}")
+        contextReady = startup.thenCombine(saved) { backend, _ -> backend }.thenComposeAsync({ backend ->
+            backend.request("load", mapOf("path" to file?.path)).handle { result, error ->
+                onEdt(epoch) {
+                    if (error != null) {
+                        write("Could not load ${file?.name}: ${message(error)}\n", true)
+                        updateStatus("Context load failed · ${file?.name ?: "no file"}; previous context retained")
+                    } else {
+                        val collisions = result.getAsJsonArray("collisions").map { it.asString }
+                        val count = result.getAsJsonArray("names").size()
+                        currentNames = result.getAsJsonArray("names").map { it.asString }.toSet()
+                        addedNames = additions.filterIsInstance<Addition.Symbol>().map(Addition.Symbol::local).toSet()
+                        file?.path?.let(knownContextPaths::add)
+                        refreshCompletionNames()
+                        val skipped = result.getAsJsonArray("unsupported").map { it.asString }
+                        write("Loaded ${file?.name ?: "plain JavaScript"}: $count exports" +
+                            (if (collisions.isEmpty()) "" else "; collisions: ${collisions.joinToString()}") +
+                            (if (skipped.isEmpty()) "" else "; names requiring an alias: ${skipped.joinToString()}") + "\n")
+                        updateContextStatus()
+                    }
+                }
+                backend
+            }
+        }, background).thenComposeAsync({ backend ->
+            var restored = CompletableFuture.completedFuture(backend)
+            for (addition in toRestore) {
+                restored = restored.thenCompose { process ->
+                    val request = when (addition) {
+                        is Addition.Symbol -> process.request("add_symbol", mapOf("path" to addition.path, "imported" to addition.exported, "local" to addition.local))
+                        is Addition.File -> process.request("add_file", mapOf("path" to addition.path, "bindings" to addition.bindings))
+                    }
+                    request.handle { result, error ->
+                            onEdt(epoch) {
+                                if (error != null) write("Could not restore ${when (addition) { is Addition.Symbol -> addition.local; is Addition.File -> addition.path }}: ${message(error)}\n", true)
+                                else {
+                                    if (addition is Addition.File) {
+                                            val actual = result.getAsJsonArray("bindings").map {
+                                                FileBinding(it.asJsonObject.get("exported").asString, it.asJsonObject.get("local").asString)
+                                            }
+                                            val index = additions.indexOf(addition)
+                                            if (index >= 0) additions[index] = addition.copy(bindings = actual)
+                                    }
+                                    addedNames = additions.flatMap {
+                                        when (it) {
+                                            is Addition.Symbol -> listOf(it.local)
+                                            is Addition.File -> it.bindings.map(FileBinding::local)
+                                        }
+                                    }.toSet()
+                                    refreshCompletionNames()
+                                }
+                            }
+                            process
+                        }
+                }
+            }
+            restored
+        }, background).whenComplete { _, error ->
+            if (error != null) onEdt(epoch) { updateStatus("Failed · ${message(error)}"); write("${message(error)}\n", true) }
+        }
+    }
+
+    private fun activeFile(): VirtualFile? = FileEditorManager.getInstance(project).selectedFiles.firstOrNull()?.takeIf {
+        it.isInLocalFileSystem && it.extension?.lowercase() in setOf("js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx")
+    }
+
+    private fun saveContext(file: VirtualFile?, epoch: Long): CompletableFuture<Void> {
+        val saved = CompletableFuture<Void>()
+        ApplicationManager.getApplication().invokeLater({
+            try {
+                check(!disposed && !project.isDisposed && epoch == generation) { "Context save superseded" }
+                val manager = FileDocumentManager.getInstance()
+                file?.takeIf { it.isValid }?.let { manager.getCachedDocument(it) }?.let { document ->
+                    if (manager.isDocumentUnsaved(document)) manager.saveDocument(document)
+                    check(!manager.isDocumentUnsaved(document)) { "Could not save ${file.name}; context was not loaded" }
+                }
+                saved.complete(null)
+            } catch (error: Exception) { saved.completeExceptionally(error) }
+        }, ModalityState.nonModal())
+        return saved
+    }
+
+    private fun updateStatus(value: String) { status = value; statusChanged?.invoke(value) }
+    private fun updateContextStatus() {
+        val restart = restartPaths.firstOrNull()
+        val changed = stalePaths.firstOrNull { it == context?.path || it in addedFilePaths }
+        updateStatus(contextTabs().first().label +
+            when {
+                restart != null -> " · ${Path.of(restart).fileName} changed; Restart Runtime to update dependencies"
+                changed != null -> " · ${Path.of(changed).fileName} changed; updates when console is focused"
+                else -> ""
+            })
+    }
+    private fun refreshCompletionNames() { contextNames = currentNames + addedNames }
+    private fun write(text: String, error: Boolean = false) {
+        writeEntry(text, if (error) OutputKind.ERROR else OutputKind.NORMAL)
+    }
+    private fun writeEntry(text: String, kind: OutputKind, styles: List<ConsoleStyle> = emptyList()) {
+        entries.add(Entry(text, kind, styles.toList()))
+        if (entries.size > 2000) entries.removeAt(0)
+        append?.invoke(text, kind, styles)
+    }
+    private fun message(error: Throwable): String =
+        if (error is CompletionException && error.cause != null) message(error.cause!!) else error.message ?: error.toString()
+
+    private fun onEdt(epoch: Long, stale: () -> Unit = {}, action: () -> Unit) {
+        ApplicationManager.getApplication().invokeLater({
+            if (disposed || project.isDisposed || epoch != generation) stale() else action()
+        }, ModalityState.nonModal())
+    }
+
+    override fun dispose() {
+        disposed = true
+        stop()
+        background.shutdownNow()
+        append = null
+        statusChanged = null
+    }
+}

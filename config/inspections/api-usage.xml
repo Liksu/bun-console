@@ -1,0 +1,9 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="JS Console API usage"/>
+    <inspection_tool class="UnstableApiUsage" enabled="true" level="ERROR" enabled_by_default="true"/>
+    <inspection_tool class="UnstableTypeUsedInSignature" enabled="true" level="ERROR" enabled_by_default="true"/>
+    <inspection_tool class="NonExtendableApiUsage" enabled="true" level="ERROR" enabled_by_default="true"/>
+    <inspection_tool class="OverrideOnly" enabled="true" level="ERROR" enabled_by_default="true"/>
+  </profile>
+</component>

@@ -1,0 +1,40 @@
+<idea-plugin>
+    <id>dev.jsconsole</id>
+    <name>JS Console</name>
+    <vendor>JS Console</vendor>
+    <description>Persistent Bun console for the current JavaScript or TypeScript file.</description>
+    <depends>com.intellij.modules.platform</depends>
+    <depends>JavaScript</depends>
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationConfigurable parentId="tools" id="dev.jsconsole.settings" displayName="JS Console"
+                                 instance="dev.jsconsole.settings.JsConsoleConfigurable"/>
+        <completion.contributor language="JavaScript" order="first"
+                                implementationClass="dev.jsconsole.ui.ConsoleCompletionContributor"/>
+        <editorActionHandler action="EditorUp" implementationClass="dev.jsconsole.ui.ConsoleHistoryHandler$Up"/>
+        <editorActionHandler action="EditorDown" implementationClass="dev.jsconsole.ui.ConsoleHistoryHandler$Down"/>
+        <editorActionHandler action="EditorEnter" implementationClass="dev.jsconsole.ui.ConsoleEnterHandler"/>
+        <editorActionHandler action="EditorStartNewLine" implementationClass="dev.jsconsole.ui.ConsoleShiftEnterHandler"/>
+        <toolWindow id="JS Console" anchor="bottom" icon="/icons/console.svg"
+                    factoryClass="dev.jsconsole.ui.JsConsoleToolWindowFactory"/>
+    </extensions>
+    <actions>
+        <action id="dev.jsconsole.AddFile" class="dev.jsconsole.ui.AddFileAction"
+                text="Add File to JS Console" description="Keep this file's exports in the console alongside the current editor file">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+        <action id="dev.jsconsole.RemoveFile" class="dev.jsconsole.ui.RemoveFileAction"
+                text="Remove File from JS Console" description="Remove this file's added context from the console">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+        <action id="dev.jsconsole.AddSymbol" class="dev.jsconsole.ui.AddSymbolAction"
+                text="Add Symbol to JS Console" description="Import this module export into JS Console">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
+        <action id="dev.jsconsole.RunInput" class="com.intellij.openapi.actionSystem.EmptyAction"
+                text="Run JS Console Input" description="Execute the input in JS Console">
+            <keyboard-shortcut keymap="$default" first-keystroke="control ENTER"/>
+        </action>
+    </actions>
+</idea-plugin>

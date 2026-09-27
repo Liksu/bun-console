@@ -1,0 +1,97 @@
+package dev.jsconsole.ui
+
+import com.intellij.lang.ecmascript6.psi.ES6ExportDeclaration
+import com.intellij.lang.ecmascript6.psi.ES6ExportSpecifier
+import com.intellij.lang.javascript.psi.JSNamedElement
+import com.intellij.lang.javascript.psi.JSReferenceExpression
+import com.intellij.lang.javascript.psi.JSFunction
+import com.intellij.lang.javascript.psi.JSVariable
+import com.intellij.lang.javascript.psi.ecmal4.JSClass
+import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.project.DumbAwareAction
+import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiDocumentManager
+import com.intellij.psi.PsiNameIdentifierOwner
+import com.intellij.psi.util.PsiTreeUtil
+import dev.jsconsole.service.JsConsoleProjectService
+
+/** Imports a named module export under the caret into the persistent console session. */
+class AddSymbolAction : DumbAwareAction() {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun update(event: AnActionEvent) {
+        val file = event.getData(CommonDataKeys.VIRTUAL_FILE)
+        event.presentation.isEnabledAndVisible = event.project != null &&
+            event.getData(CommonDataKeys.EDITOR) != null &&
+            file?.isInLocalFileSystem == true &&
+            file.extension?.lowercase() in setOf("js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx")
+    }
+
+    override fun actionPerformed(event: AnActionEvent) {
+        val project = event.project ?: return
+        val editor = event.getData(CommonDataKeys.EDITOR) ?: return
+        val file = event.getData(CommonDataKeys.PSI_FILE) ?: return
+        val virtualFile = file.virtualFile ?: return
+        PsiDocumentManager.getInstance(project).commitDocument(editor.document)
+        val selection = symbolAt(file, editor.caretModel.offset)
+        if (selection == null) {
+            Messages.showInfoMessage(project, "Place the caret on a named top-level declaration or reference.", "JS Console")
+            return
+        }
+        if (!selection.exported) {
+            Messages.showInfoMessage(project,
+                "${selection.name} is local to this module. Its live value is available only if the module exports it, or in a paused debugger frame where it is in scope.",
+                "JS Console")
+            return
+        }
+        ToolWindowManager.getInstance(project).getToolWindow("JS Console")?.show {
+            val exported = selection.exportName ?: selection.name
+            project.getService(JsConsoleProjectService::class.java).addSymbol(
+                virtualFile, exported, if (exported == "default") selection.name else null
+            )
+        }
+    }
+
+    internal data class Selection(val name: String, val exported: Boolean, val exportName: String? = null)
+
+    internal fun symbolAt(file: PsiFile, offset: Int): Selection? {
+        val leaf = file.findElementAt(offset) ?: file.findElementAt(offset - 1) ?: return null
+        val specifier = PsiTreeUtil.getParentOfType(leaf, ES6ExportSpecifier::class.java, false)
+        if (specifier != null) {
+            val exported = specifier.alias?.name ?: specifier.referenceName ?: return null
+            return Selection(specifier.referenceName ?: exported, true, exported)
+        }
+        val enclosing = PsiTreeUtil.getParentOfType(leaf, JSNamedElement::class.java, false)
+        val declaration = enclosing?.takeIf {
+            (it as? PsiNameIdentifierOwner)?.nameIdentifier?.textRange?.containsOffset(offset) == true
+        }
+        val reference = PsiTreeUtil.getParentOfType(leaf, JSReferenceExpression::class.java, false)
+        val named = declaration ?: (reference?.reference?.resolve() as? JSNamedElement) ?: return null
+        if (named.containingFile != file) return null
+        val identifier = (named as? PsiNameIdentifierOwner)?.nameIdentifier ?: return null
+        if (declaration == null && reference?.textRange?.containsOffset(offset) != true) return null
+        val name = named.name ?: return null
+        val directExportName = when (named) {
+            is JSFunction -> if (named.isExportedWithDefault) "default" else if (named.isExported) name else null
+            is JSVariable -> if (named.isExportedWithDefault) "default" else if (named.isExported) name else null
+            is JSClass -> if (named.isExportedWithDefault) "default" else if (named.isExported) name else null
+            else -> null
+        }
+        var parent = named.parent
+        var nested = false
+        while (parent != null && parent !is PsiFile) {
+            if (parent is JSNamedElement) nested = true
+            parent = parent.parent
+        }
+        val listed = file.children.filterIsInstance<ES6ExportDeclaration>()
+            .flatMap { it.exportSpecifiers.asIterable() }
+            .firstOrNull { it.reference?.resolve() == named }
+        val exportName = listed?.alias?.name ?: listed?.referenceName
+        val selectedExport = exportName ?: directExportName?.takeUnless { nested }
+        return Selection(name, selectedExport != null, selectedExport?.takeIf { it != name })
+    }
+}
