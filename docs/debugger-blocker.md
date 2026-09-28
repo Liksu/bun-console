@@ -72,8 +72,11 @@ Recheck this workaround when upgrading WebStorm.
 
 Debugger mode is optional and disabled by default. Console-only mode starts the
 same Bun bootstrap without `--inspect-wait`, does not instantiate `BunDebugBridge`
-and does not create a DAP/XDebugger session. Changing the setting affects the next
-Restart Runtime. In debugger mode the hide callback explicitly shows and activates
+and does not create a DAP/XDebugger session. The **Debugger** toggle in the console
+title bar and menu changes the setting and restarts the runtime at once; changing
+it in Settings affects the next Restart Runtime. Attaching to an already running
+runtime without a restart is not offered: Bun must start with `--inspect-wait`,
+and the adapter does not bind breakpoints to sources Bun has already loaded. In debugger mode the hide callback explicitly shows and activates
 JS Console, so the temporary Debug activation cannot leave both windows hidden.
 
 The installed Live Edit plugin has an incomplete headless test fixture; the

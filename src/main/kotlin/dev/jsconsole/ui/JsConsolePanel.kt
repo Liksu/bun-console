@@ -2,6 +2,7 @@ package dev.jsconsole.ui
 
 import com.intellij.execution.filters.TextConsoleBuilderFactory
 import com.intellij.execution.ui.ConsoleViewContentType
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionUpdateThread
@@ -81,6 +82,7 @@ class JsConsolePanel(private val project: Project, statusChanged: (String) -> Un
         add(command("Restart Runtime", "Start a fresh Bun runtime; reset console variables") { service.restart() })
         add(command("Clear Output", "Clear output; keep variables, input and command history") { service.clearOutput() })
         addSeparator()
+        add(DebuggerToggleAction(project, service))
         add(debugCommand("Continue") { service.resume() })
         add(debugCommand("Step Over") { service.stepOver() })
         add(debugCommand("Step Into") { service.stepInto() })
@@ -212,4 +214,14 @@ class JsConsolePanel(private val project: Project, statusChanged: (String) -> Un
         else if (historyIndex in service.history.indices) service.history[historyIndex] = input.text
     }
     override fun dispose() { disposed = true; service.detach() }
+}
+
+/** Switches console debugging on or off at once; Bun needs a restart for its inspector. */
+class DebuggerToggleAction(private val project: Project, private val service: JsConsoleProjectService) :
+    ToggleAction("Debugger", "Breakpoints stop console calls; switching restarts the runtime", AllIcons.Actions.StartDebugger), DumbAware {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+    override fun isSelected(event: AnActionEvent): Boolean = JsConsoleSettings.getInstance().debugEnabled
+    override fun setSelected(event: AnActionEvent, selected: Boolean) {
+        if (!project.isDisposed) service.setDebuggerEnabled(selected)
+    }
 }

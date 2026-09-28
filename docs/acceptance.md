@@ -13,7 +13,10 @@ Checks persistent variables, TypeScript imports, bare export calls, global and
 lexical collisions (including an `undefined` binding), preserving overwritten
 bindings, switching modules, top-level await, sync/async/syntax errors, a failed
 import retaining the previous context, output/control separation, and fresh state
-after restart. All fixtures are inside this development project.
+after restart. They also cover uncaught errors not stopping the runtime, pending
+awaits not blocking later commands, lazy (on first use) module execution, one
+shared realm with project modules, and exposing non-exported declarations. All
+fixtures are inside this development project or a temporary directory.
 
 ## Platform and JVM checks
 
@@ -192,6 +195,20 @@ configuration uses `build/isolated-ide`). Open a disposable JS/TS project.
     source line, never on the module's first line. Finally, stop the Debug session
     and run another console expression: JS Console and its current Bun runtime
     should continue without breakpoints. Restart Runtime should reconnect Debug.
+17. Click the **Debugger** toggle in the console title bar: the runtime restarts
+    once with the debugger (transcript, history and file tabs remain); clicking
+    again restarts without it.
+18. Open a file whose top level logs something: switching to it must not print
+    that log; the first console call of one of its functions does. Call a
+    non-exported top-level function of the file by name.
+19. Run `await new Promise(r => setTimeout(r, 5000))`, then `1 + 1` at once:
+    `2` appears immediately, the header shows `running…`, and the first result
+    arrives later under its own number.
+20. Run `Promise.reject(new Error('x'))` and `setTimeout(() => { throw 1 })`:
+    both print `Uncaught …` in red and earlier variables still exist.
+21. Run `while (true) {}`: after about two seconds the header says JavaScript is
+    busy and shows Restart Runtime. Run `Bun.spawn(['bun', '-e', 'setInterval(() => {}, 1000)'])`
+    and Restart: the spawned process must exit.
 
 Do not install into, attach to, restart, or change settings of the user's working
 WebStorm without explicit approval.

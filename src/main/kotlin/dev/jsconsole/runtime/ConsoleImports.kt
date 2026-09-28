@@ -3,6 +3,7 @@ package dev.jsconsole.runtime
 import com.intellij.lang.ecmascript6.psi.ES6ImportDeclaration
 import com.intellij.lang.javascript.psi.JSLiteralExpression
 import com.intellij.lang.javascript.psi.JSVarStatement
+import com.intellij.lang.javascript.psi.ecmal4.JSClass
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiErrorElement
@@ -21,7 +22,8 @@ object ConsoleImports {
         )
         val declarations = file.children.filterIsInstance<ES6ImportDeclaration>()
         val variables = file.children.filterIsInstance<JSVarStatement>()
-        if (declarations.isEmpty() && variables.isEmpty()) return Evaluation(source, emptyList())
+        val classes = file.children.filterIsInstance<JSClass>()
+        if (declarations.isEmpty() && variables.isEmpty() && classes.isEmpty()) return Evaluation(source, emptyList())
         val error = PsiTreeUtil.findChildOfType(file, PsiErrorElement::class.java)
         require(error == null) { "Invalid JavaScript: ${error?.errorDescription}" }
         val executable = source.toCharArray()
@@ -41,6 +43,16 @@ object ConsoleImports {
                 "var".forEachIndexed { index, char -> executable[start + index] = char }
                 for (index in 3 until keywordLength) executable[start + index] = ' '
             }
+        }
+        // Like DevTools, a console class can be declared again in a later input.
+        // The class becomes a `var` holding a class expression; only its own line shifts.
+        val insertions = mutableListOf<Pair<Int, String>>()
+        for (declaration in classes) {
+            val name = declaration.name ?: continue
+            if (name in declared) throw IllegalArgumentException("Identifier '$name' has already been declared in this input")
+            declared[name] = true
+            insertions += declaration.textRange.startOffset to "var $name = "
+            insertions += declaration.textRange.endOffset to ";"
         }
         val imports = declarations.map { declaration ->
             require(declaration.withClause == null) { "Import attributes are not supported in JS Console yet" }
@@ -70,6 +82,8 @@ object ConsoleImports {
             executable[declaration.textRange.startOffset] = ';'
             Import(specifier, bindings)
         }
-        return Evaluation(String(executable), imports, declared.keys.toList())
+        val code = StringBuilder(String(executable))
+        for ((offset, text) in insertions.sortedByDescending { it.first }) code.insert(offset, text)
+        return Evaluation(code.toString(), imports, declared.keys.toList())
     }
 }

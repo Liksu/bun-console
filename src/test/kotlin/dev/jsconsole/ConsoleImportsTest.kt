@@ -55,4 +55,16 @@ class ConsoleImportsTest : BasePlatformTestCase() {
             assertTrue(expected.message!!.contains("arr"))
         }
     }
+
+    fun testTopLevelClassesCanBeDeclaredAgain() {
+        val prepared = ConsoleImports.prepare(project, "class Point { x = 1 }\n[new Point().x]")
+        assertEquals("var Point = class Point { x = 1 };\n[new Point().x]", prepared.code)
+        assertEquals(listOf("Point"), prepared.declarations)
+        try {
+            ConsoleImports.prepare(project, "class A {}; const A = 1")
+            fail("A class and a variable with the same name in one input must remain invalid")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message!!.contains("A"))
+        }
+    }
 }

@@ -17,6 +17,7 @@ import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiNameIdentifierOwner
 import com.intellij.psi.util.PsiTreeUtil
+import dev.jsconsole.runtime.ConsoleFiles
 import dev.jsconsole.service.JsConsoleProjectService
 
 /** Imports a named module export under the caret into the persistent console session. */
@@ -24,11 +25,9 @@ class AddSymbolAction : DumbAwareAction() {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun update(event: AnActionEvent) {
-        val file = event.getData(CommonDataKeys.VIRTUAL_FILE)
         event.presentation.isEnabledAndVisible = event.project != null &&
             event.getData(CommonDataKeys.EDITOR) != null &&
-            file?.isInLocalFileSystem == true &&
-            file.extension?.lowercase() in setOf("js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx")
+            ConsoleFiles.isSource(event.getData(CommonDataKeys.VIRTUAL_FILE))
     }
 
     override fun actionPerformed(event: AnActionEvent) {
@@ -42,9 +41,9 @@ class AddSymbolAction : DumbAwareAction() {
             Messages.showInfoMessage(project, "Place the caret on a named top-level declaration or reference.", "JS Console")
             return
         }
-        if (!selection.exported) {
+        if (!selection.exported && !selection.topLevel) {
             Messages.showInfoMessage(project,
-                "${selection.name} is local to this module. Its live value is available only if the module exports it, or in a paused debugger frame where it is in scope.",
+                "${selection.name} is declared inside another declaration. Its live value is available in a paused debugger frame where it is in scope.",
                 "JS Console")
             return
         }
@@ -56,7 +55,7 @@ class AddSymbolAction : DumbAwareAction() {
         }
     }
 
-    internal data class Selection(val name: String, val exported: Boolean, val exportName: String? = null)
+    internal data class Selection(val name: String, val exported: Boolean, val exportName: String? = null, val topLevel: Boolean = true)
 
     internal fun symbolAt(file: PsiFile, offset: Int): Selection? {
         val leaf = file.findElementAt(offset) ?: file.findElementAt(offset - 1) ?: return null
@@ -92,6 +91,6 @@ class AddSymbolAction : DumbAwareAction() {
             .firstOrNull { it.reference?.resolve() == named }
         val exportName = listed?.alias?.name ?: listed?.referenceName
         val selectedExport = exportName ?: directExportName?.takeUnless { nested }
-        return Selection(name, selectedExport != null, selectedExport?.takeIf { it != name })
+        return Selection(name, selectedExport != null, selectedExport?.takeIf { it != name }, !nested)
     }
 }

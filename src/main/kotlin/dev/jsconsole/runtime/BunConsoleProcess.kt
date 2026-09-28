@@ -3,6 +3,8 @@ package dev.jsconsole.runtime
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.intellij.execution.configurations.PathEnvironmentVariableUtil
+import com.intellij.openapi.util.SystemInfo
 import java.io.BufferedWriter
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -144,7 +146,13 @@ class BunConsoleProcess(
         if (!closed.compareAndSet(false, true)) return
         runCatching { socket?.close() }
         runCatching { listener?.close() }
-        process?.let { child -> if (child.isAlive) child.destroyForcibly() }
+        // Processes started by console code belong to this runtime. Collect them
+        // before Bun exits: orphans are no longer its descendants.
+        process?.let { child ->
+            val started = runCatching { child.descendants().toList() }.getOrDefault(emptyList())
+            if (child.isAlive) child.destroyForcibly()
+            started.forEach { runCatching { it.destroyForcibly() } }
+        }
         if (process == null) termination.complete(null)
         jobs.values.forEach { it.completeExceptionally(IllegalStateException("Runtime restarted or stopped")) }
         jobs.clear()
@@ -160,12 +168,19 @@ object BunRuntimeLocator {
             require(Files.isRegularFile(path) && Files.isExecutable(path)) { "Bun executable not found or not executable: $explicit" }
             return explicit
         }
-        val windows = System.getProperty("os.name").startsWith("Windows")
-        val binary = if (windows) "bun.exe" else "bun"
-        val paths = System.getenv("PATH").orEmpty().split(java.io.File.pathSeparator)
-            .filter { it.isNotBlank() }.map { Path.of(it.trim('"'), binary) } +
-            Path.of(System.getProperty("user.home"), ".bun", "bin", binary)
-        return paths.firstOrNull { Files.isRegularFile(it) && Files.isExecutable(it) }?.toString()
+        // The IDE's PATH lookup also sees the login-shell PATH on macOS/Linux and PATHEXT on Windows.
+        PathEnvironmentVariableUtil.findExecutableInPathOnAnyOS("bun")?.toPath()
+            ?.takeIf { Files.isRegularFile(it) && Files.isExecutable(it) }
+            ?.let { return it.toString() }
+        val binary = if (SystemInfo.isWindows) "bun.exe" else "bun"
+        val home = Path.of(System.getProperty("user.home"))
+        val candidates = listOfNotNull(
+            System.getenv("BUN_INSTALL")?.takeIf { it.isNotBlank() }?.let { Path.of(it, "bin", binary) },
+            home.resolve(".bun").resolve("bin").resolve(binary),
+            Path.of("/opt/homebrew/bin/bun").takeIf { SystemInfo.isMac },
+            Path.of("/usr/local/bin/bun").takeUnless { SystemInfo.isWindows },
+        )
+        return candidates.firstOrNull { Files.isRegularFile(it) && Files.isExecutable(it) }?.toString()
             ?: error("Bun was not found. Install Bun 1.4+ or select its executable in Settings > Tools > JS Console.")
     }
 }

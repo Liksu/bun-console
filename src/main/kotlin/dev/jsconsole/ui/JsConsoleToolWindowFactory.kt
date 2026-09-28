@@ -17,10 +17,10 @@ class JsConsoleToolWindowFactory : ToolWindowFactory, DumbAware {
         val restart = object : DumbAwareAction("Restart Runtime", "Reload all modules in a fresh Bun runtime", AllIcons.Actions.Restart) {
             override fun actionPerformed(event: AnActionEvent) { service.restart() }
         }
+        val debugger = DebuggerToggleAction(project, service)
         val panel = JsConsolePanel(project) {
             tabs.refresh()
-            if (service.restartRequired) toolWindow.setTitleActions(listOf(restart))
-            else toolWindow.setTitleActions(emptyList())
+            toolWindow.setTitleActions(if (service.restartRequired || service.blocked) listOf(debugger, restart) else listOf(debugger))
         }
         Disposer.register(toolWindow.contentManager, panel)
         toolWindow.setAdditionalGearActions(panel.menuActions)

@@ -49,7 +49,8 @@ tasks.test {
         // Live Edit has an incomplete headless fixture in this IDE installation.
         val disabled = layout.buildDirectory.file("isolated-ide/js-console/WS-2026.2.3/config-test/disabled_plugins.txt").get().asFile
         disabled.parentFile.mkdirs()
-        disabled.appendText("com.intellij.plugins.html.instantEditing\n")
+        val liveEdit = "com.intellij.plugins.html.instantEditing"
+        if (!disabled.exists() || liveEdit !in disabled.readLines()) disabled.appendText("$liveEdit\n")
     }
 }
 

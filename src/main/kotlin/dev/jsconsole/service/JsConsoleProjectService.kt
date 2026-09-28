@@ -13,6 +13,7 @@ import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.xdebugger.XDebugSession
@@ -26,7 +27,9 @@ import dev.jsconsole.debug.BunDebugBridge
 import dev.jsconsole.runtime.BunConsoleProcess
 import dev.jsconsole.runtime.BunRuntimeLocator
 import dev.jsconsole.runtime.BootstrapManager
+import dev.jsconsole.runtime.ConsoleFiles
 import dev.jsconsole.runtime.ConsoleImports
+import dev.jsconsole.runtime.TopLevelDeclarations
 import dev.jsconsole.settings.JsConsoleSettings
 import dev.jsconsole.ui.ConsoleStyle
 import java.nio.file.Path
@@ -35,9 +38,14 @@ import java.util.concurrent.CompletionException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.Executors
+import javax.swing.Timer
 
 @Service(Service.Level.PROJECT)
 class JsConsoleProjectService(private val project: Project) : Disposable {
+    private companion object {
+        val SHOW_RUNNING_AFTER = TimeUnit.MILLISECONDS.toNanos(100)
+        val PING_AFTER = TimeUnit.SECONDS.toNanos(1)
+    }
     private val background = Executors.newSingleThreadExecutor { task -> Thread(task, "JS Console lifecycle").apply { isDaemon = true } }
     enum class OutputKind { NORMAL, ERROR, JAVASCRIPT, RESULT, CLEAR }
     private data class Entry(val text: String, val kind: OutputKind, val styles: List<ConsoleStyle>)
@@ -82,6 +90,14 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
     var status: String = "Stopped"
         private set
     val restartRequired: Boolean get() = restartPaths.isNotEmpty()
+    /** Console commands still waiting for their result, by command number, with start times. */
+    private val running = linkedMapOf<Long, Long>()
+    private var busyTimer: Timer? = null
+    private var ping: CompletableFuture<JsonObject>? = null
+    private var pingSent = 0L
+    /** True when Bun did not answer a ping: synchronous code occupies its JavaScript thread. */
+    var blocked = false
+        private set
 
     data class ContextTab(val key: String, val label: String, val path: String?, val active: Boolean)
 
@@ -118,7 +134,11 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         EditorFactory.getInstance().eventMulticaster.addDocumentListener(object : DocumentListener {
             override fun documentChanged(event: DocumentEvent) {
                 val changed = FileDocumentManager.getInstance().getFile(event.document) ?: return
-                if (ready == null || changed.extension?.lowercase() !in setOf("js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx")) return
+                // Only real files of this project (or its console context) can affect the runtime;
+                // the console input and other projects' documents cannot.
+                if (ready == null || !ConsoleFiles.isSource(changed)) return
+                if (changed != context && changed.path !in knownContextPaths &&
+                    !ProjectFileIndex.getInstance(project).isInContent(changed)) return
                 val markChanged = {
                     modifiedVersions[changed.path] = ++editVersion
                     editedPaths.add(changed.path)
@@ -192,6 +212,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
 
     fun stop(): CompletableFuture<*> {
         generation++
+        resetRunning()
         pendingBreakpointUpdates.values.forEach { it.complete(null) }
         pendingBreakpointUpdates.clear()
         runtime?.close()
@@ -203,6 +224,16 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
     fun openContextFile(path: String) {
         val file = LocalFileSystem.getInstance().findFileByPath(path) ?: return
         if (file.isValid) FileEditorManager.getInstance(project).openFile(file, true)
+    }
+
+    /** Debugging needs Bun's inspector from process start, so switching it restarts only the runtime. */
+    fun setDebuggerEnabled(enabled: Boolean) {
+        val settings = JsConsoleSettings.getInstance()
+        if (settings.debugEnabled == enabled && (debugger != null) == enabled) return
+        settings.debugEnabled = enabled
+        write(if (enabled) "\nDebugger on: restarting runtime; breakpoints stop console calls\n"
+            else "\nDebugger off: restarting runtime without the debugger\n")
+        restart()
     }
 
     fun togglePin() {
@@ -220,6 +251,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         editedPaths.clear()
         knownContextPaths.clear()
         refreshing = false
+        resetRunning()
         runtime?.close()
         debugger?.close()
         debugger = null
@@ -284,6 +316,8 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
             return
         }
         val backend = contextReady ?: return
+        running[id] = System.nanoTime()
+        startBusyTimer()
         backend.thenComposeAsync({
             val evaluation = ReadAction.computeBlocking<ConsoleImports.Evaluation, RuntimeException> {
                 ConsoleImports.prepare(project, source)
@@ -292,13 +326,53 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
                 "declarations" to evaluation.declarations))
         }, background)
             .whenComplete { result, error -> onEdt(epoch) {
+                running.remove(id)
                 if (error != null) write("[$id] ${message(error)}\n", true)
                 else {
                     write("[$id] ")
                     writeEntry(result.get("text")?.asString ?: "undefined", OutputKind.RESULT)
                     write("\n")
                 }
+                updateBusyStatus()
             } }
+    }
+
+    private fun startBusyTimer() {
+        val timer = busyTimer ?: Timer(250) { updateBusyStatus() }.also { busyTimer = it }
+        if (!timer.isRunning) timer.start()
+    }
+
+    private fun resetRunning() {
+        running.clear()
+        busyTimer?.stop()
+        ping = null
+        blocked = false
+    }
+
+    /**
+     * Awaited commands may run for a long time without blocking the console. A
+     * ping answered outside Bun's command queue tells them apart from synchronous
+     * code that occupies the JavaScript thread (only Restart can stop that).
+     */
+    private fun updateBusyStatus() {
+        if (running.isEmpty()) {
+            resetRunning()
+            updateContextStatus()
+            return
+        }
+        val now = System.nanoTime()
+        val probe = ping
+        when {
+            debugPaused -> { ping = null; blocked = false }
+            probe == null -> if (now - running.values.first() >= PING_AFTER) {
+                ping = runtime?.request("ping")
+                pingSent = now
+            }
+            probe.isDone -> { ping = null; blocked = false }
+            now - pingSent >= PING_AFTER -> blocked = true
+        }
+        val text = contextStatusText()
+        if (text != status) updateStatus(text)
     }
 
     /** Reimport edited contexts, or restart the console runtime when an enabled breakpoint must be rebound. */
@@ -322,6 +396,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
             return
         }
         refreshing = true
+        val current = context
         val next = previous.thenComposeAsync({ backend ->
             backend.request("cached_files").handle { result, error ->
                 val cached = if (error == null) result.getAsJsonArray("paths").map { normalizePath(it.asString) }.toSet()
@@ -332,11 +407,13 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
                 var chain = CompletableFuture.completedFuture(emptyList<ReloadResult>())
                 for (path in direct) {
                     chain = chain.thenCompose { prior ->
-                        val file = (context?.takeIf { it.path == path } ?: LocalFileSystem.getInstance().findFileByPath(path))
+                        val file = (current?.takeIf { it.path == path } ?: LocalFileSystem.getInstance().findFileByPath(path))
                         if (file == null || !file.isValid) {
                             CompletableFuture.completedFuture(prior + ReloadResult(path, null, IllegalStateException("File unavailable")))
                         } else {
-                            saveContext(file, epoch).thenCompose { backend.request("reload_file", mapOf("path" to path)) }
+                            saveContext(file, epoch).thenComposeAsync({
+                                backend.request("reload_file", mapOf("path" to path, "declared" to declared(path)))
+                            }, background)
                                 .handle { result, error -> prior + ReloadResult(path, result, error) }
                         }
                     }
@@ -366,13 +443,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
                             editedPaths.remove(outcome.path)
                             restartPaths.remove(outcome.path)
                         }
-                        addedNames = additions.flatMap {
-                            when (it) {
-                                is Addition.Symbol -> listOf(it.local)
-                                is Addition.File -> it.bindings.map(FileBinding::local)
-                            }
-                        }.toSet()
-                        refreshCompletionNames()
+                        refreshAddedNames()
                         for ((path, version) in versions) {
                             if (modifiedVersions[path] == version) modifiedVersions.remove(path)
                         }
@@ -386,13 +457,29 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
                 }
             }
         }, background)
-        contextReady = next
+        // A failed refresh must not poison later commands: they keep using the previous runtime state.
+        contextReady = next.exceptionallyCompose { previous }
         next.whenComplete { _, error -> if (error != null) onEdt(epoch) {
             refreshing = false
             restartPaths.addAll(versions.keys)
             updateContextStatus()
             write("Could not refresh context: ${message(error)}\n", true)
         } }
+    }
+
+    /**
+     * Top-level declarations of a context file. The runtime exposes the
+     * unexported ones, like DevTools shows a script's top-level functions.
+     */
+    private fun declared(path: String?): List<String> {
+        val file = path?.let { LocalFileSystem.getInstance().findFileByPath(it) } ?: return emptyList()
+        return ApplicationManager.getApplication().runReadAction<List<String>> { TopLevelDeclarations.names(project, file) }
+    }
+
+    private fun reportHidden(name: String?, result: JsonObject) {
+        val hidden = result.getAsJsonArray("hidden")?.map { it.asString }.orEmpty()
+        if (hidden.isNotEmpty()) write("Not exported and unavailable until Restart Runtime (${name ?: "file"} was loaded by another module first): " +
+            hidden.joinToString() + "\n")
     }
 
     private fun hasEnabledJavaScriptBreakpoint(path: String): Boolean =
@@ -413,7 +500,8 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         val backend = contextReady ?: return
         backend.thenCombine(saved) { process, _ -> process }
             .thenComposeAsync({ process ->
-                process.request("add_symbol", mapOf("path" to file.path, "imported" to exported, "local" to local))
+                process.request("add_symbol", mapOf("path" to file.path, "imported" to exported, "local" to local,
+                    "declared" to declared(file.path)))
             }, background)
             .whenComplete { result, error -> onEdt(epoch) {
                 if (error != null) write("Could not add $exported: ${message(error)}\n", true)
@@ -440,12 +528,15 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         val saved = saveContext(file, epoch)
         val backend = contextReady ?: return
         backend.thenCombine(saved) { process, _ -> process }
-            .thenComposeAsync({ process -> process.request("add_file", mapOf("path" to file.path)) }, background)
+            .thenComposeAsync({ process ->
+                process.request("add_file", mapOf("path" to file.path, "declared" to declared(file.path)))
+            }, background)
             .whenComplete { result, error -> onEdt(epoch) {
                 if (error != null) write("Could not add ${file.name}: ${message(error)}\n", true)
                 else {
                     val bindings = result.getAsJsonArray("bindings").map { FileBinding(it.asJsonObject.get("exported").asString, it.asJsonObject.get("local").asString) }
                     val unsupported = result.getAsJsonArray("unsupported").map { it.asString }
+                    reportHidden(file.name, result)
                     if (additions.none { it is Addition.File && it.path == file.path }) {
                         additions.add(Addition.File(file.path, bindings))
                     }
@@ -475,13 +566,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
                     restartPaths.remove(file.path)
                     modifiedVersions.remove(file.path)
                     addedFilePaths = addedFilePaths - file.path
-                    addedNames = additions.flatMap {
-                        when (it) {
-                            is Addition.Symbol -> listOf(it.local)
-                            is Addition.File -> it.bindings.map(FileBinding::local)
-                        }
-                    }.toSet()
-                    refreshCompletionNames()
+                    refreshAddedNames()
                     write("Removed file ${file.name} from JS Console context\n")
                     loadContext(backend, epoch)
                 }
@@ -501,7 +586,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         val saved = saveContext(file, epoch)
         updateStatus("Loading · ${file?.name ?: "plain JavaScript"}")
         contextReady = startup.thenCombine(saved) { backend, _ -> backend }.thenComposeAsync({ backend ->
-            backend.request("load", mapOf("path" to file?.path)).handle { result, error ->
+            backend.request("load", mapOf("path" to file?.path, "declared" to declared(file?.path))).handle { result, error ->
                 onEdt(epoch) {
                     if (error != null) {
                         write("Could not load ${file?.name}: ${message(error)}\n", true)
@@ -514,6 +599,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
                         file?.path?.let(knownContextPaths::add)
                         refreshCompletionNames()
                         val skipped = result.getAsJsonArray("unsupported").map { it.asString }
+                        reportHidden(file?.name, result)
                         write("Loaded ${file?.name ?: "plain JavaScript"}: $count exports" +
                             (if (collisions.isEmpty()) "" else "; collisions: ${collisions.joinToString()}") +
                             (if (skipped.isEmpty()) "" else "; names requiring an alias: ${skipped.joinToString()}") + "\n")
@@ -527,8 +613,10 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
             for (addition in toRestore) {
                 restored = restored.thenCompose { process ->
                     val request = when (addition) {
-                        is Addition.Symbol -> process.request("add_symbol", mapOf("path" to addition.path, "imported" to addition.exported, "local" to addition.local))
-                        is Addition.File -> process.request("add_file", mapOf("path" to addition.path, "bindings" to addition.bindings))
+                        is Addition.Symbol -> process.request("add_symbol", mapOf("path" to addition.path, "imported" to addition.exported,
+                            "local" to addition.local, "declared" to declared(addition.path)))
+                        is Addition.File -> process.request("add_file", mapOf("path" to addition.path, "bindings" to addition.bindings,
+                            "declared" to declared(addition.path)))
                     }
                     request.handle { result, error ->
                             onEdt(epoch) {
@@ -541,13 +629,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
                                             val index = additions.indexOf(addition)
                                             if (index >= 0) additions[index] = addition.copy(bindings = actual)
                                     }
-                                    addedNames = additions.flatMap {
-                                        when (it) {
-                                            is Addition.Symbol -> listOf(it.local)
-                                            is Addition.File -> it.bindings.map(FileBinding::local)
-                                        }
-                                    }.toSet()
-                                    refreshCompletionNames()
+                                    refreshAddedNames()
                                 }
                             }
                             process
@@ -560,9 +642,8 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         }
     }
 
-    private fun activeFile(): VirtualFile? = FileEditorManager.getInstance(project).selectedFiles.firstOrNull()?.takeIf {
-        it.isInLocalFileSystem && it.extension?.lowercase() in setOf("js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx")
-    }
+    private fun activeFile(): VirtualFile? =
+        FileEditorManager.getInstance(project).selectedFiles.firstOrNull()?.takeIf(ConsoleFiles::isSource)
 
     private fun saveContext(file: VirtualFile?, epoch: Long): CompletableFuture<Void> {
         val saved = CompletableFuture<Void>()
@@ -581,17 +662,31 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
     }
 
     private fun updateStatus(value: String) { status = value; statusChanged?.invoke(value) }
-    private fun updateContextStatus() {
+    private fun updateContextStatus() = updateStatus(contextStatusText())
+    private fun contextStatusText(): String {
         val restart = restartPaths.firstOrNull()
         val changed = stalePaths.firstOrNull { it == context?.path || it in addedFilePaths }
-        updateStatus((contextTabs().firstOrNull { it.active }?.label ?: "JavaScript") +
+        val elapsed = running.values.firstOrNull()?.let { System.nanoTime() - it } ?: 0L
+        val seconds = TimeUnit.NANOSECONDS.toSeconds(elapsed)
+        return (contextTabs().firstOrNull { it.active }?.label ?: "JavaScript") +
             when {
+                blocked -> " · JavaScript is busy ($seconds s); Restart Runtime to stop it"
+                !debugPaused && elapsed >= SHOW_RUNNING_AFTER -> " · running…" + if (seconds > 0) " $seconds s" else ""
                 restart != null -> " · ${Path.of(restart).fileName} changed; Restart Runtime to update dependencies"
                 changed != null -> " · ${Path.of(changed).fileName} changed; updates when console is focused"
                 else -> ""
-            })
+            }
     }
     private fun refreshCompletionNames() { contextNames = currentNames + addedNames }
+    private fun refreshAddedNames() {
+        addedNames = additions.flatMap {
+            when (it) {
+                is Addition.Symbol -> listOf(it.local)
+                is Addition.File -> it.bindings.map(FileBinding::local)
+            }
+        }.toSet()
+        refreshCompletionNames()
+    }
     private fun write(text: String, error: Boolean = false) {
         writeEntry(text, if (error) OutputKind.ERROR else OutputKind.NORMAL)
     }
@@ -612,6 +707,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
     override fun dispose() {
         disposed = true
         stop()
+        busyTimer = null
         background.shutdownNow()
         append = null
         statusChanged = null

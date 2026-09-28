@@ -20,7 +20,7 @@ class AddSymbolActionTest : BasePlatformTestCase() {
         assertEquals(AddSymbolAction.Selection("twice", true), select("twice"))
         assertEquals(AddSymbolAction.Selection("lexical", true), select("lexical"))
         assertEquals(AddSymbolAction.Selection("testHighlight", false), select("testHighlight"))
-        assertEquals(AddSymbolAction.Selection("hiddenMethod", false), select("hiddenMethod"))
+        assertEquals(AddSymbolAction.Selection("hiddenMethod", false, topLevel = false), select("hiddenMethod"))
         assertEquals(AddSymbolAction.Selection("shared", true, "publicName"), select("shared"))
         assertEquals(AddSymbolAction.Selection("Box", true), select("Box"))
         assertEquals(AddSymbolAction.Selection("privateDefault", true, "default"), select("privateDefault"))

@@ -8,6 +8,7 @@ import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class BunConsoleProcessTest {
@@ -26,6 +27,29 @@ class BunConsoleProcessTest {
         } finally {
             runtime.close()
             // Windows keeps the child's working directory locked until it exits.
+            runtime.termination.get(5, TimeUnit.SECONDS)
+            Files.deleteIfExists(bootstrap)
+            Files.deleteIfExists(directory)
+        }
+    }
+
+    @Test fun closingTheRuntimeEndsProcessesStartedByConsoleCode() {
+        val directory = Files.createTempDirectory("js-console-children-test")
+        val bootstrap = directory.resolve("bootstrap.mjs")
+        javaClass.getResourceAsStream("/runtime/bootstrap.mjs")!!.use { Files.copy(it, bootstrap) }
+        val runtime = BunConsoleProcess(BunRuntimeLocator.locate(null), bootstrap, directory, { _, _ -> }, {})
+        try {
+            runtime.start().get(20, TimeUnit.SECONDS)
+            val pid = runtime.request("eval", mapOf("code" to "Bun.spawn([process.execPath, '-e', 'setInterval(() => {}, 1000)']).pid"))
+                .get(5, TimeUnit.SECONDS).get("text").asString.toLong()
+            val child = ProcessHandle.of(pid).orElseThrow()
+            assertTrue(child.isAlive)
+            runtime.close()
+            runtime.termination.get(5, TimeUnit.SECONDS)
+            child.onExit().get(5, TimeUnit.SECONDS)
+            assertFalse(child.isAlive)
+        } finally {
+            runtime.close()
             runtime.termination.get(5, TimeUnit.SECONDS)
             Files.deleteIfExists(bootstrap)
             Files.deleteIfExists(directory)

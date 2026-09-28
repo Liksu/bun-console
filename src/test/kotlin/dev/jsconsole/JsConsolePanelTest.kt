@@ -23,6 +23,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.ui.EditorTextField
 import com.intellij.ui.JBSplitter
 import dev.jsconsole.service.JsConsoleProjectService
+import dev.jsconsole.ui.DebuggerToggleAction
 import dev.jsconsole.ui.JsConsolePanel
 import dev.jsconsole.ui.ConsoleSyntaxPrinter
 import dev.jsconsole.settings.JsConsoleSettings
@@ -195,7 +196,8 @@ class JsConsolePanelTest : BasePlatformTestCase() {
             assertEquals("", afterClear.toString())
             service.execute("d instanceof Date")
             PlatformTestUtil.waitWithEventsDispatching("Clear reset the runtime", { afterClear.contains("[3] true") }, 20)
-            val pin = menu.filterIsInstance<ToggleAction>().single()
+            val pin = menu.filterIsInstance<ToggleAction>().single { it.templatePresentation.text == "Pin File Context" }
+            assertTrue(menu.any { it is DebuggerToggleAction })
             assertFalse(pin.isSelected(event(pin)))
             val pinEvent = event(pin)
             pin.update(pinEvent)

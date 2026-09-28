@@ -80,7 +80,9 @@ dependency changes, the header shows a native **Restart Runtime** action, since
 reimporting only the parent file would
 leave that dependency cached. A failed reimport also offers Restart. Changes are
 applied when you return to the console, not on every keystroke in the source file.
-The current saved JS/TS file's named exports become available by name. Pin keeps
+The current saved JS/TS file's named exports and its other top-level functions,
+classes, variables and enums become available by name, exported or not, as in
+the DevTools console. Pin keeps
 that file alongside the one following the editor when browsing; Restart resets
 Bun and restores both kinds of file context.
 History stays visible; previous expressions are never replayed.
@@ -97,8 +99,14 @@ a default export is named from the file (`a_default` for `a.ts`). Use **Remove
 File from JS Console** on the same file to remove that added layer. Pin applies
 to the file following the editor. The same command in the file context menu can
 add a file that has not been opened. Each file has one context tab, but all tabs display the same
-console session. Importing either the main or an added file executes its module
-top-level code with normal Bun semantics.
+console session. Selecting or adding a file does not run it: the file is read
+statically, and its module top-level code runs (with normal Bun semantics) the
+first time console code reads one of its names or explicitly imports it.
+Non-exported declarations are exposed by appending an `export { … }` list after
+the module's last line when the console loads it, so line numbers, stack traces
+and breakpoints are unchanged. If another module had already loaded that file,
+its non-exported names stay unavailable until Restart Runtime; CommonJS files
+expose only `module.exports`.
 
 In a JS/TS editor, put the caret on an exported function or variable and choose
 **Add Symbol to JS Console** from the editor context menu. References to those
@@ -107,19 +115,33 @@ declarations, named default exports, and declarations exposed through
 console and imports that one export into the persistent session, even when another
 file is the current context. Existing globals and console names are preserved:
 if `process` is taken, the symbol is added as `process_2`. Added symbols survive a
-manual runtime Restart without replaying console expressions. A module-local
-declaration such as `const testHighlight` is visible to the editor's PSI/AST,
-but cannot be imported as a live value until the module exports it. Running Bun
-under a debugger can expose such values in a paused stack frame where they are
-in scope; starting Bun with `--inspect` alone does not add them to the REPL.
+manual runtime Restart without replaying console expressions. Top-level
+declarations can be added whether or not they are exported. Declarations nested
+inside functions or objects are reachable only in a paused debugger frame where
+they are in scope.
 
-Choose Bun under **Settings → Tools → JS Console**. Automatic detection searches
-PATH, then `~/.bun/bin`; disable it to browse for an executable or enter an absolute
-path. The choice is saved in this IDE's local settings for all projects and is not
-synced to other computers. The same page selects **Console only** (the default)
-or **Console + debugger**. Applying either runtime setting keeps the current
-console running; use **⋮ → Restart Runtime** when ready to apply it. Bun 1.4+ is
-required.
+Errors never stop the runtime: an error that escapes console code (a rejected
+promise nobody awaits, an exception thrown from a timer) is printed as
+`Uncaught …` / `Uncaught (in promise) …` and all variables remain. As in
+DevTools, a command waiting on `await` does not block later commands; each
+result is printed with its command number when it arrives. After 100 ms the
+header shows `running…`. If synchronous code occupies Bun's JavaScript thread
+(for example `while (true) {}`), the header reports that JavaScript is busy and
+offers Restart Runtime, the only way to stop it. Restart also ends processes
+that console code started. Console code and project modules share one global
+object, so `instanceof Array`, `globalThis` values and classes work across them.
+Top-level `const`, `let` and `class` declarations can be repeated in later
+commands.
+
+Choose Bun under **Settings → Tools → JS Console**. Automatic detection uses the
+IDE's PATH lookup (which includes the login-shell PATH on macOS), then
+`$BUN_INSTALL/bin`, `~/.bun/bin` and the Homebrew/`/usr/local` locations; disable
+it to browse for an executable or enter an absolute path. The choice is saved in
+this IDE's local settings for all projects and is not synced to other computers.
+Bun 1.4+ is required. The debugger is off by default. Turn it on or off with the
+**Debugger** toggle in the console's title bar or **⋮** menu: the runtime restarts
+at once (variables reset; transcript, history and file contexts remain). The same
+choice appears in Settings, where it applies at the next Restart Runtime.
 Static imports support default, named/aliased, namespace and side-effect forms:
 
 ```javascript
@@ -139,11 +161,10 @@ not yet supported; dynamic `import()` expressions keep the backend's behavior.
 
 Reading WebStorm's own Bun setting is blocked by its internal service API; the
 JS Console setting is separate. A missing runtime error points to the settings page.
-Imports execute normal module top-level code. When **Start console with debugger**
-is enabled, this version attaches WebStorm's Bun debugger to the console process.
-Non-exported declarations are available
-only in a paused stack frame where JavaScript scope exposes them; they are not
-automatically added to the console's top-level context. The debugger initializes
+Imports execute normal module top-level code. When the **Debugger** toggle is on,
+the console attaches WebStorm's Bun debugger to its Bun process. Locals of a
+function are available in a paused stack frame where JavaScript scope exposes
+them. The debugger initializes
 in the background: after its temporary Debug window is hidden, JS Console is
 shown and activated explicitly; WebStorm opens Debug again when execution stops
 at a breakpoint. While paused, you can switch back to JS
