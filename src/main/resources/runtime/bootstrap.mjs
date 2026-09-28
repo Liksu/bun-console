@@ -1,10 +1,12 @@
 import repl from "node:repl";
 import vm from "node:vm";
 import net from "node:net";
+import { readFileSync } from "node:fs";
 import { PassThrough } from "node:stream";
 import { inspect } from "node:util";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { pathToFileURL } from "node:url";
-import { basename, dirname, isAbsolute, resolve } from "node:path";
+import { basename, dirname, extname, isAbsolute, resolve } from "node:path";
 import { builtinModules } from "node:module";
 
 // The IDE owns the loopback listener. User stdout/stderr are never a protocol.
@@ -16,22 +18,41 @@ if (major < 1 || (major === 1 && minor < 4)) throw new Error("JS Console require
 delete process.env.JS_CONSOLE_PORT;
 delete process.env.JS_CONSOLE_TOKEN;
 
+function formatError(error) {
+  try {
+    return error instanceof Error || typeof error?.stack === "string" ? String(error.stack ?? error) : inspect(error);
+  } catch { return "Unprintable error"; }
+}
+
+// Like a DevTools page, the runtime survives errors that escape user code.
+function reportUncaught(prefix, error) {
+  try { process.stderr.write(`${prefix} ${formatError(error)}\n`); } catch {}
+}
+process.on("uncaughtException", (error) => reportUncaught("Uncaught", error));
+process.on("unhandledRejection", (reason) => reportUncaught("Uncaught (in promise)", reason));
+
+// node:repl reports runtime errors through handleError rather than the eval
+// callback. The async scope tells which of the concurrent evaluations failed.
+const evaluationScope = new AsyncLocalStorage();
 const input = new PassThrough();
 const output = new PassThrough();
 output.on("data", (chunk) => process.stdout.write(chunk));
-let rejectEvaluation = null;
+const initialGlobals = new Set(Object.getOwnPropertyNames(globalThis));
+// Like DevTools, console code shares the realm of the modules it calls:
+// arrays, errors and classes from project files pass `instanceof` checks.
 const server = repl.start({
-  input, output, prompt: "", terminal: false, useGlobal: false,
+  input, output, prompt: "", terminal: false, useGlobal: true,
   handleError(error) {
-    if (rejectEvaluation) rejectEvaluation(error);
-    else console.error(error);
+    const evaluation = evaluationScope.getStore();
+    if (evaluation && !evaluation.settled) evaluation.reject(error);
+    else reportUncaught("Uncaught", error);
     return "ignore";
   },
 });
 // node:repl preloads module aliases such as `path` and `fs`. They are not JS
 // globals: leave those names free for explicit imports and current-file exports.
 for (const name of builtinModules) {
-  if (!(name in globalThis) && Object.getOwnPropertyDescriptor(server.context, name)?.configurable) {
+  if (!initialGlobals.has(name) && Object.getOwnPropertyDescriptor(server.context, name)?.configurable) {
     delete server.context[name];
   }
 }
@@ -39,6 +60,7 @@ const bindings = new Map();
 const addedFiles = new Map();
 const fileNamespaces = new Map();
 const qualifiedProperties = new Map();
+const modules = new Map();
 let currentFile = null;
 const socket = net.createConnection({ host: "127.0.0.1", port });
 socket.setEncoding("utf8");
@@ -46,6 +68,7 @@ socket.on("error", (error) => { console.error(error.message); process.exit(1); }
 socket.on("close", () => process.exit(0));
 socket.on("connect", () => send({ event: "ready", token, version: process.versions.bun }));
 
+const DEFERRED = Symbol("deferred result");
 let pending = "";
 let queue = Promise.resolve();
 socket.on("data", (chunk) => {
@@ -55,51 +78,193 @@ socket.on("data", (chunk) => {
   while ((end = pending.indexOf("\n")) >= 0) {
     const line = pending.slice(0, end);
     pending = pending.slice(end + 1);
-    queue = queue.then(async () => {
-      let request;
-      try {
-        request = JSON.parse(line);
-        const result = await dispatch(request);
-        send({ id: request.id, ok: true, ...result });
-      } catch (error) {
-        send({ id: request?.id, ok: false, error: String(error?.stack ?? error) });
-      }
-    });
+    let request;
+    try { request = JSON.parse(line); }
+    catch (error) { send({ ok: false, error: `Invalid request: ${formatError(error)}` }); continue; }
+    // Answered outside the queue: a late reply means the JavaScript thread is busy.
+    if (request?.op === "ping") { send({ id: request.id, ok: true, version: process.versions.bun }); continue; }
+    queue = queue.then(() => handle(request));
   }
 });
 
-function send(message) { socket.write(`${JSON.stringify(message)}\n`); }
+async function handle(request) {
+  const fail = (error) => send({ id: request?.id, ok: false, error: formatError(error) });
+  try {
+    const result = await dispatch(request);
+    // An evaluation leaves the queue once its synchronous part has run, so a
+    // pending await does not block later commands (as in DevTools).
+    if (result?.[DEFERRED]) result[DEFERRED].then((value) => send({ id: request.id, ok: true, ...value }), fail);
+    else send({ id: request.id, ok: true, ...result });
+  } catch (error) { fail(error); }
+}
 
-function evaluateOnce(source) {
+function send(message) {
+  try { socket.write(`${JSON.stringify(message)}\n`); }
+  catch (error) { reportUncaught("JS Console could not send a reply:", error); }
+}
+
+function evaluate(source) {
   return new Promise((resolve, reject) => {
-    rejectEvaluation = (error) => { rejectEvaluation = null; reject(error); };
-    server.eval(`${source}\n`, server.context, "js-console", (error, value) => {
-      rejectEvaluation = null;
-      if (error) reject(error);
-      else resolve(value);
+    const evaluation = {
+      settled: false,
+      resolve(value) { if (!evaluation.settled) { evaluation.settled = true; resolve(value); } },
+      reject(error) { if (!evaluation.settled) { evaluation.settled = true; reject(error); } },
+    };
+    evaluationScope.run(evaluation, () => {
+      try {
+        server.eval(`${source}\n`, server.context, "js-console", (error, value) => {
+          if (error) evaluation.reject(error);
+          else evaluation.resolve(value);
+        });
+      } catch (error) { evaluation.reject(error); }
     });
   });
 }
 
-async function evaluate(source) {
-  return evaluateOnce(source);
+function render(value) {
+  try {
+    return inspect(value, { colors: false, depth: 4, maxArrayLength: 100, maxStringLength: 10000, customInspect: false });
+  } catch (error) { return `[Uninspectable value: ${formatError(error)}]`; }
 }
 
 function isIdentifier(name) {
-  if (!/^[$_\p{ID_Start}][$\u200c\u200d\p{ID_Continue}]*$/u.test(name)) return false;
+  if (!/^[$_\p{ID_Start}][$‌‍\p{ID_Continue}]*$/u.test(name)) return false;
   // Parsing a declaration rejects reserved words without modifying the context.
   try { new vm.Script(`let ${name};`); return true; } catch { return false; }
 }
 
+const globalEval = eval;
 function exists(name) {
   if (name in server.context) return true;
-  try { vm.runInContext(name, server.context); return true; }
+  // Indirect eval sees console `let`/`const`/`class` bindings of the global scope.
+  try { globalEval(name); return true; }
   catch (error) {
     if (error?.name !== "ReferenceError") return true;
     // typeof on an absent name succeeds, but throws for a lexical TDZ binding.
-    try { vm.runInContext(`typeof ${name}`, server.context); return false; }
+    try { globalEval(`typeof ${name}`); return false; }
     catch { return true; }
   }
+}
+
+// Context files are read, not run. A module's top-level code executes only
+// when console code first reads one of its bindings.
+const LOADERS = { ".ts": "ts", ".mts": "ts", ".cts": "ts", ".tsx": "tsx", ".jsx": "jsx" };
+const transpilers = new Map();
+const STAR_EXPORT = /^\s*export\s*\*\s*from\s*(["'])([^"'\n]+)\1/gm;
+
+function scanExports(path, seen = new Set()) {
+  const key = resolve(path);
+  if (seen.has(key)) return new Set();
+  seen.add(key);
+  const loader = LOADERS[extname(path).toLowerCase()] ?? "jsx";
+  let transpiler = transpilers.get(loader);
+  if (!transpiler) transpilers.set(loader, transpiler = new Bun.Transpiler({ loader }));
+  const source = readFileSync(path, "utf8");
+  const names = new Set(transpiler.scan(source).exports);
+  // Bun exposes a CommonJS module.exports object as the default export.
+  if (COMMON_JS.test(source)) names.add("default");
+  // `export * from` does not list names; follow those modules statically too.
+  for (const [, , specifier] of source.matchAll(STAR_EXPORT)) {
+    try {
+      const target = Bun.resolveSync(specifier, dirname(path));
+      if (!isAbsolute(target)) continue;
+      for (const name of scanExports(target, seen)) if (name !== "default") names.add(name);
+    } catch {}
+  }
+  return names;
+}
+
+// Non-exported top-level declarations. The IDE lists a context file's
+// declarations; a load hook appends `export { … }` for the unexported ones after
+// the last line, so source positions (errors, breakpoints) stay the same.
+const DECLARATION_LOADERS = { ".ts": "ts", ".mts": "ts", ".tsx": "tsx", ".jsx": "jsx", ".js": "jsx", ".mjs": "jsx" };
+const COMMON_JS = /\bmodule\.exports\b|\bexports\.[\w$]+\s*=/;
+const hooked = new Set();
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function exposeDeclarations(record, declared) {
+  if (declared == null) return;
+  if (!Array.isArray(declared)) throw new Error("Invalid declarations");
+  const loader = DECLARATION_LOADERS[extname(record.path).toLowerCase()];
+  const exported = scanExports(record.path);
+  // A CommonJS file would stop being CommonJS with an export statement.
+  record.locals = loader && !COMMON_JS.test(readFileSync(record.path, "utf8"))
+    ? [...new Set(declared)].filter((name) => typeof name === "string" && !exported.has(name) && isIdentifier(name))
+    : [];
+  if (!record.locals.length || hooked.has(record.moduleId)) return;
+  hooked.add(record.moduleId);
+  const file = resolve(record.path);
+  const filter = new RegExp(`^${escapeRegExp(file)}$`, process.platform === "win32" ? "i" : "");
+  Bun.plugin({
+    name: `js-console declarations: ${file}`,
+    setup(build) {
+      build.onLoad({ filter }, ({ path }) => {
+        const source = readFileSync(path, "utf8");
+        const locals = record.locals ?? [];
+        record.exposed = new Set(locals);
+        return { contents: locals.length ? `${source}\n;export { ${locals.join(", ")} };\n` : source, loader };
+      });
+    },
+  });
+}
+
+/** Exports plus exposed declarations. Declarations of a module loaded before they were listed stay hidden. */
+function moduleNames(record) {
+  const names = scanExports(record.path);
+  const loaded = !!require.cache[resolve(record.path)];
+  const hidden = [];
+  for (const name of record.locals ?? []) {
+    if (!loaded || record.exposed?.has(name)) names.add(name);
+    else hidden.push(name);
+  }
+  return { names: [...names].sort(), hidden };
+}
+
+function moduleRecord(path) {
+  const moduleId = pathToFileURL(path).href;
+  let record = modules.get(moduleId);
+  if (!record) modules.set(moduleId, record = { path, moduleId, namespace: undefined });
+  return record;
+}
+
+function readModule(record) {
+  if (!record.namespace) {
+    // Bun's synchronous require shares ES module instances with import().
+    const loaded = require(record.path);
+    // A CommonJS file yields module.exports; present it like import() does.
+    record.namespace = Object.prototype.toString.call(loaded) === "[object Module]" ? loaded
+      : Object.freeze({ ...(loaded !== null && typeof loaded === "object" ? loaded : {}), default: loaded });
+    reconcile(record);
+  }
+  return record.namespace;
+}
+
+function forget(record) {
+  delete require.cache[resolve(record.path)];
+  record.namespace = undefined;
+}
+
+// Statically scanned names can differ from the evaluated module (for example
+// a CommonJS file). Align automatic bindings once the real namespace exists.
+function reconcile(record) {
+  const namespace = record.namespace;
+  if (namespace == null || typeof namespace !== "object") return;
+  for (const [name, binding] of bindings) {
+    if (binding.moduleId !== record.moduleId || binding.imported === "*" || !ownsBinding(name, binding)) continue;
+    if ((binding.origin === "current" || binding.origin === "file") && !(binding.imported in namespace)) {
+      delete server.context[name];
+      bindings.delete(name);
+    }
+  }
+  if (currentFile === record.path) {
+    for (const name of Object.keys(namespace)) {
+      if (isIdentifier(name) && !exists(name)) bind(name, reader(record, name), "current", record.moduleId, name);
+    }
+  }
+}
+
+function reader(record, imported) {
+  return imported === "*" ? () => readModule(record) : () => readModule(record)[imported];
 }
 
 function clearAutomaticFileBindings() {
@@ -129,7 +294,8 @@ function refreshQualifiedProperties() {
       break;
     }
     if (!key) continue; // Never replace a user-owned global property.
-    const get = () => fileNamespaces.get(path);
+    const record = fileNamespaces.get(path);
+    const get = () => readModule(record);
     Object.defineProperty(server.context, key, { configurable: true, enumerable: false, get });
     qualifiedProperties.set(path, { key, get });
   }
@@ -151,11 +317,16 @@ function ownsBinding(name, binding) {
   return binding && binding.origin !== "user" && descriptor?.get === binding.get && descriptor?.set === binding.set;
 }
 
+function sameBinding(name, moduleId, imported) {
+  const binding = bindings.get(name);
+  return ownsBinding(name, binding) && binding.moduleId === moduleId && binding.imported === imported;
+}
+
 async function importModules(imports = []) {
   if (!Array.isArray(imports)) throw new Error("Expected an import list");
   const staged = new Map();
   // Validate all bindings before importing, so a collision cannot overwrite user state.
-  const modules = imports.map(({ specifier, bindings: names }) => {
+  const planned = imports.map(({ specifier, bindings: names }) => {
     if (typeof specifier !== "string" || !Array.isArray(names)) throw new Error("Invalid import declaration");
     const resolved = Bun.resolveSync(specifier, currentFile ? dirname(currentFile) : process.cwd());
     const moduleId = isAbsolute(resolved) ? pathToFileURL(resolved).href : resolved;
@@ -170,8 +341,11 @@ async function importModules(imports = []) {
     }
     return { moduleId, names };
   });
-  for (const { moduleId, names } of modules) {
+  // An explicit import statement runs the module, exactly as it would in a file.
+  for (const { moduleId, names } of planned) {
     const namespace = await import(moduleId);
+    const record = modules.get(moduleId);
+    if (record && !record.namespace) { record.namespace = namespace; reconcile(record); }
     for (const { imported, local } of names) {
       if (imported !== "*" && !Object.hasOwn(namespace, imported)) {
         throw new Error(`Module '${moduleId}' has no export '${imported}'`);
@@ -185,18 +359,19 @@ async function importModules(imports = []) {
   }
 }
 
-async function addSymbol(path, imported, requestedLocal) {
+function addSymbol(path, imported, requestedLocal, declared) {
   if (typeof path !== "string" || typeof imported !== "string" ||
       (requestedLocal != null && !isIdentifier(requestedLocal))) throw new Error("Invalid symbol request");
-  const moduleId = pathToFileURL(path).href;
-  const namespace = await import(moduleId);
-  if (!Object.hasOwn(namespace, imported)) throw new Error(`Module '${path}' has no export '${imported}'`);
+  const record = moduleRecord(path);
+  exposeDeclarations(record, declared);
+  const { names, hidden } = moduleNames(record);
+  if (hidden.includes(imported)) {
+    throw new Error(`'${imported}' is not exported and '${basename(path)}' was already loaded by another module; Restart Runtime to use it`);
+  }
+  if (!names.includes(imported)) throw new Error(`Module '${path}' has no export '${imported}'`);
   let local = requestedLocal ?? imported;
   if (!isIdentifier(local)) throw new Error(`Export '${imported}' needs a valid JavaScript alias`);
-  const same = (name) => {
-    const binding = bindings.get(name);
-    return ownsBinding(name, binding) && binding.moduleId === moduleId && binding.imported === imported;
-  };
+  const same = (name) => sameBinding(name, record.moduleId, imported);
   if (same(local) && bindings.get(local).origin === "import") return { local, already: true };
   if (exists(local) && !same(local)) {
     if (requestedLocal != null) throw new Error(`Cannot add '${local}': the name is already in use`);
@@ -204,7 +379,7 @@ async function addSymbol(path, imported, requestedLocal) {
     while (exists(`${local}_${suffix}`)) suffix++;
     local = `${local}_${suffix}`;
   }
-  bind(local, () => namespace[imported], "import", moduleId, imported);
+  bind(local, reader(record, imported), "import", record.moduleId, imported);
   return { local, already: false };
 }
 
@@ -214,34 +389,17 @@ function fileDefaultAlias(path) {
   return `${stem}_default`;
 }
 
-async function addFile(path, requestedBindings) {
-  if (typeof path !== "string") throw new Error("Expected a file path");
-  const moduleId = pathToFileURL(path).href;
-  const previous = addedFiles.get(moduleId);
-  if (previous) return { ...previous, already: true };
-  if (requestedBindings != null && !Array.isArray(requestedBindings)) throw new Error("Invalid file bindings");
-  const namespace = await import(moduleId);
-  const requested = new Map();
-  for (const entry of requestedBindings ?? []) {
-    if (typeof entry?.exported !== "string" || !isIdentifier(entry.local) || requested.has(entry.exported)) {
-      throw new Error("Invalid file binding");
-    }
-    requested.set(entry.exported, entry.local);
-  }
+/** Bind every export of an added file, keeping previously chosen aliases where possible. */
+function bindFile(record, names, requested) {
   const staged = [];
   const taken = new Set();
   const unsupported = [];
-  for (const exported of Object.keys(namespace)) {
-    const base = exported === "default" ? fileDefaultAlias(path) : exported;
+  for (const exported of names) {
+    const base = exported === "default" ? fileDefaultAlias(record.path) : exported;
     if (!isIdentifier(base)) { unsupported.push(exported); continue; }
+    const same = (name) => sameBinding(name, record.moduleId, exported);
     let local = requested.get(exported) ?? base;
-    const same = (name) => {
-      const binding = bindings.get(name);
-      return ownsBinding(name, binding) && binding.moduleId === moduleId && binding.imported === exported;
-    };
-    if (requested.has(exported) && (taken.has(local) || (exists(local) && !same(local)))) {
-      local = base;
-    }
+    if (requested.has(exported) && (taken.has(local) || (exists(local) && !same(local)))) local = base;
     let suffix = 2;
     while (taken.has(local) || (exists(local) && !same(local))) local = `${base}_${suffix++}`;
     taken.add(local);
@@ -251,85 +409,78 @@ async function addFile(path, requestedBindings) {
     // A matching explicit import is already available. A matching auto-context
     // binding must become persistent before following another editor file.
     if (existing && bindings.get(local).origin !== "current") continue;
-    bind(local, () => namespace[exported], "file", moduleId, exported);
+    bind(local, reader(record, exported), "file", record.moduleId, exported);
   }
   const result = { bindings: staged.map(({ exported, local }) => ({ exported, local })), unsupported };
-  addedFiles.set(moduleId, result);
-  fileNamespaces.set(path, namespace);
-  refreshQualifiedProperties();
-  return { ...result, already: false };
+  addedFiles.set(record.moduleId, result);
+  return result;
 }
 
-async function reloadFile(path) {
+/** Expose the editor file's exports under their own names, never replacing an existing name. */
+function bindCurrent(record, names) {
+  const exposed = [];
+  const collisions = [];
+  const unsupported = [];
+  for (const name of names) {
+    if (!isIdentifier(name)) { unsupported.push(name); continue; }
+    if (!exists(name)) bind(name, reader(record, name), "current", record.moduleId, name);
+    else if (!sameBinding(name, record.moduleId, name)) { collisions.push(name); continue; }
+    exposed.push(name);
+  }
+  return { names: exposed, collisions, unsupported };
+}
+
+function addFile(path, requestedBindings, declared) {
   if (typeof path !== "string") throw new Error("Expected a file path");
-  const moduleId = pathToFileURL(path).href;
+  const record = moduleRecord(path);
+  const previous = addedFiles.get(record.moduleId);
+  if (previous) return { ...previous, already: true };
+  if (requestedBindings != null && !Array.isArray(requestedBindings)) throw new Error("Invalid file bindings");
+  exposeDeclarations(record, declared);
+  const { names, hidden } = moduleNames(record);
+  const requested = new Map();
+  for (const entry of requestedBindings ?? []) {
+    if (typeof entry?.exported !== "string" || !isIdentifier(entry.local) || requested.has(entry.exported)) {
+      throw new Error("Invalid file binding");
+    }
+    requested.set(entry.exported, entry.local);
+  }
+  const result = bindFile(record, names, requested);
+  fileNamespaces.set(path, record);
+  refreshQualifiedProperties();
+  return { ...result, hidden, already: false };
+}
+
+function reloadFile(path, declared) {
+  if (typeof path !== "string") throw new Error("Expected a file path");
+  const record = moduleRecord(path);
   const isCurrent = currentFile === path;
-  const previousFile = addedFiles.get(moduleId);
+  const previousFile = addedFiles.get(record.moduleId);
   if (!isCurrent && !previousFile) throw new Error("File is not in the console context");
 
-  // Bun exposes imported ES modules through require.cache. Only this file is
-  // invalidated; its imported dependencies retain their existing module state.
-  delete require.cache[resolve(path)];
-  // Immediately after WebStorm saves a document, Bun 1.4 can still serve the
-  // previous transpiled module. Give its file cache a moment to observe the save.
-  await Bun.sleep(100);
-  const namespace = await import(moduleId);
-  fileNamespaces.set(path, namespace);
+  // Only this file is invalidated; its imported dependencies retain their
+  // module state. The new version runs when the console next reads it.
+  scanExports(path); // A file that no longer parses keeps the previous bindings.
+  exposeDeclarations(record, declared);
+  forget(record);
+  const { names } = moduleNames(record);
+  fileNamespaces.set(path, record);
   refreshQualifiedProperties();
+  const available = new Set(names);
   for (const [name, binding] of bindings) {
-    if (binding.moduleId !== moduleId || !ownsBinding(name, binding)) continue;
-    if (binding.imported === "*" || Object.hasOwn(namespace, binding.imported)) {
-      binding.read = () => binding.imported === "*" ? namespace : namespace[binding.imported];
+    if (binding.moduleId !== record.moduleId || !ownsBinding(name, binding)) continue;
+    if (binding.imported === "*" || available.has(binding.imported)) {
+      binding.read = reader(record, binding.imported);
     } else if (binding.origin === "current" || binding.origin === "file") {
       delete server.context[name];
       bindings.delete(name);
     }
   }
-
-  const names = [];
-  const collisions = [];
-  const unsupported = [];
-  if (isCurrent) {
-    for (const name of Object.keys(namespace)) {
-      if (!isIdentifier(name)) { unsupported.push(name); continue; }
-      if (exists(name)) {
-        const binding = bindings.get(name);
-        if (ownsBinding(name, binding) && binding.moduleId === moduleId && binding.imported === name) names.push(name);
-        else collisions.push(name);
-      } else {
-        bind(name, () => namespace[name], "current", moduleId, name);
-        names.push(name);
-      }
-    }
-  }
-
-  let fileResult = null;
-  if (previousFile) {
-    const requested = new Map(previousFile.bindings.map(({ exported, local }) => [exported, local]));
-    const staged = [];
-    const taken = new Set();
-    const fileUnsupported = [];
-    for (const exported of Object.keys(namespace)) {
-      const base = exported === "default" ? fileDefaultAlias(path) : exported;
-      if (!isIdentifier(base)) { fileUnsupported.push(exported); continue; }
-      let local = requested.get(exported) ?? base;
-      const same = (name) => {
-        const binding = bindings.get(name);
-        return ownsBinding(name, binding) && binding.moduleId === moduleId && binding.imported === exported;
-      };
-      let suffix = 2;
-      while (taken.has(local) || (exists(local) && !same(local))) local = `${base}_${suffix++}`;
-      taken.add(local);
-      staged.push({ exported, local, existing: same(local) });
-    }
-    for (const { exported, local, existing } of staged) {
-      if (existing && bindings.get(local).origin !== "current") continue;
-      bind(local, () => namespace[exported], "file", moduleId, exported);
-    }
-    fileResult = { bindings: staged.map(({ exported, local }) => ({ exported, local })), unsupported: fileUnsupported };
-    addedFiles.set(moduleId, fileResult);
-  }
-  return { names, collisions, unsupported, file: fileResult };
+  const current = isCurrent ? bindCurrent(record, names) : { names: [], collisions: [], unsupported: [] };
+  const file = previousFile
+    ? bindFile(record, names, new Map(previousFile.bindings.map(({ exported, local }) => [exported, local])))
+    : null;
+  return { ...current, file };
 }
 
 function removeFile(path) {
@@ -339,7 +490,7 @@ function removeFile(path) {
   if (!file) return { removed: false };
   for (const { exported, local } of file.bindings) {
     const binding = bindings.get(local);
-    if (binding?.origin !== "file" || binding.moduleId !== moduleId || binding.imported !== exported || !ownsBinding(local, binding)) continue;
+    if (binding?.origin !== "file" || !sameBinding(local, moduleId, exported)) continue;
     delete server.context[local];
     bindings.delete(local);
   }
@@ -349,8 +500,28 @@ function removeFile(path) {
   return { removed: true };
 }
 
+function loadCurrent(path, declared) {
+  if (!path) {
+    clearAutomaticFileBindings();
+    currentFile = null;
+    fileNamespaces.clear();
+    refreshQualifiedProperties();
+    return { names: [], collisions: [], unsupported: [], hidden: [], path: null };
+  }
+  // Read first: a missing or unparsable file leaves the old context usable.
+  const record = moduleRecord(path);
+  exposeDeclarations(record, declared);
+  const { names, hidden } = moduleNames(record);
+  clearAutomaticFileBindings();
+  currentFile = path;
+  fileNamespaces.clear();
+  fileNamespaces.set(path, record);
+  refreshQualifiedProperties();
+  return { ...bindCurrent(record, names), hidden, path };
+}
+
 async function dispatch(request) {
-  switch (request.op) {
+  switch (request?.op) {
     case "eval": {
       if (typeof request.code !== "string") throw new Error("Expected JavaScript source");
       if (request.declarations != null && (!Array.isArray(request.declarations) ||
@@ -364,39 +535,14 @@ async function dispatch(request) {
         delete server.context[name];
         bindings.delete(name);
       }
-      const value = await evaluate(request.code);
-      return { text: inspect(value, { colors: false, depth: 4, maxArrayLength: 100, maxStringLength: 10000, customInspect: false }) };
+      return { [DEFERRED]: evaluate(request.code).then((value) => ({ text: render(value) })) };
     }
-    case "load": {
-      // Import first: a failed import leaves the old context usable.
-      const namespace = request.path ? await import(pathToFileURL(request.path).href) : {};
-      clearAutomaticFileBindings();
-      currentFile = request.path ?? null;
-      fileNamespaces.clear();
-      if (request.path) fileNamespaces.set(request.path, namespace);
-      refreshQualifiedProperties();
-      const names = [];
-      const collisions = [];
-      const unsupported = [];
-      for (const name of Object.keys(namespace)) {
-        if (!isIdentifier(name)) { unsupported.push(name); continue; }
-        if (exists(name)) {
-          const binding = bindings.get(name);
-          if (ownsBinding(name, binding) && binding.moduleId === pathToFileURL(request.path).href && binding.imported === name) names.push(name);
-          else collisions.push(name);
-          continue;
-        }
-        bind(name, () => namespace[name], "current", pathToFileURL(request.path).href, name);
-        names.push(name);
-      }
-      return { names, collisions, unsupported, path: request.path ?? null };
-    }
-    case "add_symbol": return addSymbol(request.path, request.imported, request.local);
-    case "add_file": return addFile(request.path, request.bindings);
-    case "reload_file": return reloadFile(request.path);
+    case "load": return loadCurrent(request.path, request.declared);
+    case "add_symbol": return addSymbol(request.path, request.imported, request.local, request.declared);
+    case "add_file": return addFile(request.path, request.bindings, request.declared);
+    case "reload_file": return reloadFile(request.path, request.declared);
     case "remove_file": return removeFile(request.path);
     case "cached_files": return { paths: Object.keys(require.cache) };
-    case "ping": return { version: process.versions.bun };
-    default: throw new Error(`Unknown console operation: ${request.op}`);
+    default: throw new Error(`Unknown console operation: ${request?.op}`);
   }
 }
