@@ -338,6 +338,7 @@ test("non-exported top-level declarations listed by the IDE are available withou
     await run(`await import(${JSON.stringify(early)})`);
     const added = await runtime.request("add_file", { path: early, declared: ["secret", "open"] });
     expect(added.hidden).toEqual(["secret"]);
+    await expect(run("secret()")).rejects.toThrow("another module loaded early.ts before the console could expose");
     await expect(runtime.request("add_symbol", { path: early, imported: "secret", declared: ["secret", "open"] }))
       .rejects.toThrow("Restart Runtime");
     const cjs = await runtime.request("add_file", { path: legacy, declared: ["helper"] });
@@ -410,6 +411,25 @@ test("files created after Bun started load, and CommonJS names explain what is m
     expect(legacy.names).toEqual(["count", "greet"]);
     expect((await run("greet('you')")).text).toBe("'hello, you'");
     await expect(run("count")).rejects.toThrow("not in module.exports of legacy.cjs");
+  } finally {
+    await runtime.stop();
+    if (directory.startsWith(tmpdir())) rmSync(directory, { recursive: true, force: true });
+  }
+}, 15000);
+
+test("declarations of a context file's imports are prepared before a dependency loads them", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "js-console-dependencies-"));
+  const ide = (name) => join(directory, name).replaceAll("\\", "/");
+  writeFileSync(ide("store.ts"), "const items: string[] = [];\nexport function add(item: string) { return items.push(item); }");
+  writeFileSync(ide("uses.ts"), "import { add } from './store';\nexport function useStore() { add('apple'); return add('pear'); }");
+  const runtime = await start();
+  const run = (code) => runtime.request("eval", { code });
+  try {
+    await runtime.request("load", { path: ide("uses.ts"), declared: ["useStore"], dependencies: { [ide("store.ts")]: ["items", "add"] } });
+    expect((await run("useStore()")).text).toBe("2");
+    const store = await runtime.request("load", { path: ide("store.ts"), declared: ["items", "add"] });
+    expect(store.hidden).toEqual([]);
+    expect((await run("items.join()")).text).toBe("'apple,pear'");
   } finally {
     await runtime.stop();
     if (directory.startsWith(tmpdir())) rmSync(directory, { recursive: true, force: true });

@@ -1,7 +1,6 @@
-// "Loaded by another module first": open uses-store.ts, run `useStore()`, THEN open this file.
-// Its non-exported `items` stays unavailable (the console says so) until Restart Runtime,
-// because another module had already loaded this file without the console's export list.
-// Opening this file first (or after Restart) makes `items` available by name.
+// Open uses-store.ts and run `useStore()`, THEN open this file:
+// its non-exported `items` is available by name and shares that state: items -> [ 'apple', 'pear' ].
+// (The console prepared this file's names when uses-store.ts, which imports it, became the context.)
 
 const items: string[] = [];
 

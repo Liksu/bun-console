@@ -7,5 +7,5 @@ export function useStore(): number {
 }
 
 // Try:  useStore()   -> 2
-// Then open store.ts: its exports (add, count) work and share this state: count() -> 2;
-// the transcript explains why `items` is not available until Restart Runtime.
+// Then open store.ts: add, count and the non-exported items all work and share this state:
+//   count() -> 2,   items -> [ 'apple', 'pear' ]

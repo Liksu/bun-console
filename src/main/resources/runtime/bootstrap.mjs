@@ -251,7 +251,24 @@ function exposeDeclarations(record, declared) {
   });
 }
 
-/** Exports plus exposed declarations. Declarations of a module loaded before they were listed stay hidden. */
+/**
+ * The IDE also lists the declarations of the context file's project imports.
+ * Preparing them before anything runs keeps their names available when they
+ * are first loaded as a dependency rather than as a console context file.
+ */
+function exposeDependencies(dependencies) {
+  if (dependencies == null) return;
+  if (typeof dependencies !== "object" || Array.isArray(dependencies)) throw new Error("Invalid dependency declarations");
+  for (const [path, declared] of Object.entries(dependencies)) {
+    try { exposeDeclarations(moduleRecord(path), declared); } catch {} // A missing or broken dependency is reported when it loads.
+  }
+}
+
+/**
+ * Exports plus exposed declarations. Declarations of a module that was loaded
+ * before they were listed are "hidden": still bound, but reading one explains
+ * why it is unavailable instead of a bare ReferenceError.
+ */
 function moduleNames(record) {
   const loaded = !!require.cache[resolve(record.path)];
   // A loaded module is the truth until it is reloaded; reading it from the cache runs nothing.
@@ -262,8 +279,9 @@ function moduleNames(record) {
   if (!loaded) for (const name of record.commonJsCandidates ?? []) names.add(name);
   for (const name of record.locals ?? []) {
     if (!loaded || record.exposed?.has(name)) names.add(name);
-    else hidden.push(name);
+    else { hidden.push(name); names.add(name); }
   }
+  record.unavailable = new Set(hidden);
   return { names: [...names].sort(), hidden };
 }
 
@@ -299,8 +317,8 @@ function reconcile(record) {
   if (namespace == null || typeof namespace !== "object") return;
   for (const [name, binding] of bindings) {
     if (binding.moduleId !== record.moduleId || binding.imported === "*" || !ownsBinding(name, binding)) continue;
-    // CommonJS candidates stay bound so that reading them explains module.exports.
-    if (record.commonJsCandidates?.includes(binding.imported)) continue;
+    // CommonJS candidates and hidden declarations stay bound so that reading them explains why.
+    if (record.commonJsCandidates?.includes(binding.imported) || record.unavailable?.has(binding.imported)) continue;
     if ((binding.origin === "current" || binding.origin === "file") && !(binding.imported in namespace)) {
       delete server.context[name];
       bindings.delete(name);
@@ -319,6 +337,10 @@ function reader(record, imported) {
     const namespace = readModule(record);
     if (imported in namespace) return namespace[imported];
     const file = basename(record.path);
+    if (record.unavailable?.has(imported)) {
+      throw new ReferenceError(`${imported} is not available: another module loaded ${file} before the console ` +
+        "could expose its top-level names. Restart Runtime to use it");
+    }
     throw new ReferenceError(record.commonJsCandidates?.includes(imported)
       ? `${imported} is not in module.exports of ${file} (a CommonJS file exposes only module.exports)`
       : `${imported} is not defined: ${file} no longer exports it`);
@@ -579,6 +601,7 @@ function loadCurrent(path, declared) {
 }
 
 async function dispatch(request) {
+  exposeDependencies(request?.dependencies);
   switch (request?.op) {
     case "eval": {
       if (typeof request.code !== "string") throw new Error("Expected JavaScript source");

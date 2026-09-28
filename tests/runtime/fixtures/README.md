@@ -11,6 +11,6 @@ to type in its comments.
 | `async.ts` | awaits don't block, `running…`, uncaught errors, busy thread, child processes on Restart |
 | `debug-target.ts` | console debugger: breakpoint, locals in the same input, Continue |
 | `app-server.mjs` | evaluating in *your* paused program (WebStorm Debug), not the console runtime |
-| `store.ts` + `uses-store.ts` | a file loaded by another module first keeps non-exported names hidden until Restart |
+| `store.ts` + `uses-store.ts` | a file first loaded as another module's dependency still exposes its non-exported names |
 | `legacy.cjs` | CommonJS: only `module.exports` |
 | `repl.md` | plain console behavior without a context file |

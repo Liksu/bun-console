@@ -105,9 +105,11 @@ statically, and its module top-level code runs (with normal Bun semantics) the
 first time console code reads one of its names or explicitly imports it.
 Non-exported declarations are exposed by appending an `export { … }` list after
 the module's last line when the console loads it, so line numbers, stack traces
-and breakpoints are unchanged. If another module had already loaded that file,
-its non-exported names stay unavailable until Restart Runtime; CommonJS files
-expose only `module.exports`.
+and breakpoints are unchanged. The same is prepared for the project files the
+context file imports, so their names are available when you open them later. If
+a file was loaded some other way first (for example a dynamic `import()`), its
+non-exported names explain that they need Restart Runtime. In CommonJS files
+only names in `module.exports` work; reading another top-level name says so.
 
 In a JS/TS editor, put the caret on an exported function or variable and choose
 **Add Symbol to JS Console** from the editor context menu. References to those

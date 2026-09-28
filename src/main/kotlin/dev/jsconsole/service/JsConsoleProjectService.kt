@@ -491,7 +491,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
                             CompletableFuture.completedFuture(prior + ReloadResult(path, null, IllegalStateException("File unavailable")))
                         } else {
                             saveContext(file, epoch).thenComposeAsync({
-                                backend.request("reload_file", mapOf("path" to path, "declared" to declared(path)))
+                                backend.request("reload_file", mapOf("path" to path) + declarationFields(path))
                             }, background)
                                 .handle { result, error -> prior + ReloadResult(path, result, error) }
                         }
@@ -550,14 +550,17 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
      * Top-level declarations of a context file. The runtime exposes the
      * unexported ones, like DevTools shows a script's top-level functions.
      */
-    private fun declared(path: String?): List<String> {
-        val file = path?.let { LocalFileSystem.getInstance().findFileByPath(it) } ?: return emptyList()
-        return ApplicationManager.getApplication().runReadAction<List<String>> { TopLevelDeclarations.names(project, file) }
+    private fun declarationFields(path: String?): Map<String, Any?> {
+        val file = path?.let { LocalFileSystem.getInstance().findFileByPath(it) } ?: return emptyMap()
+        val graph = ApplicationManager.getApplication().runReadAction<Map<String, List<String>>> {
+            TopLevelDeclarations.withImports(project, file)
+        }
+        return mapOf("declared" to graph[file.path].orEmpty(), "dependencies" to graph - file.path)
     }
 
     private fun reportHidden(name: String?, result: JsonObject) {
         val hidden = result.getAsJsonArray("hidden")?.map { it.asString }.orEmpty()
-        if (hidden.isNotEmpty()) write("Not exported and unavailable until Restart Runtime (${name ?: "file"} was loaded by another module first): " +
+        if (hidden.isNotEmpty()) write("Unavailable until Restart Runtime (another module loaded ${name ?: "the file"} before the console could expose them): " +
             hidden.joinToString() + "\n")
     }
 
@@ -579,8 +582,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         val backend = contextReady ?: return
         backend.thenCombine(saved) { process, _ -> process }
             .thenComposeAsync({ process ->
-                process.request("add_symbol", mapOf("path" to file.path, "imported" to exported, "local" to local,
-                    "declared" to declared(file.path)))
+                process.request("add_symbol", mapOf("path" to file.path, "imported" to exported, "local" to local) + declarationFields(file.path))
             }, background)
             .whenComplete { result, error -> onEdt(epoch) {
                 if (error != null) write("Could not add $exported: ${message(error)}\n", true)
@@ -608,7 +610,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         val backend = contextReady ?: return
         backend.thenCombine(saved) { process, _ -> process }
             .thenComposeAsync({ process ->
-                process.request("add_file", mapOf("path" to file.path, "declared" to declared(file.path)))
+                process.request("add_file", mapOf("path" to file.path) + declarationFields(file.path))
             }, background)
             .whenComplete { result, error -> onEdt(epoch) {
                 if (error != null) write("Could not add ${file.name}: ${message(error)}\n", true)
@@ -667,7 +669,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         val saved = saveContext(file, epoch)
         updateStatus("Loading · ${file?.name ?: "plain JavaScript"}")
         contextReady = startup.thenCombine(saved) { backend, _ -> backend }.thenComposeAsync({ backend ->
-            backend.request("load", mapOf("path" to file?.path, "declared" to declared(file?.path))).handle { result, error ->
+            backend.request("load", mapOf("path" to file?.path) + declarationFields(file?.path)).handle { result, error ->
                 onEdt(epoch) {
                     if (error != null) {
                         write("Could not load ${file?.name}: ${message(error)}\n", true)
@@ -695,9 +697,8 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
                 restored = restored.thenCompose { process ->
                     val request = when (addition) {
                         is Addition.Symbol -> process.request("add_symbol", mapOf("path" to addition.path, "imported" to addition.exported,
-                            "local" to addition.local, "declared" to declared(addition.path)))
-                        is Addition.File -> process.request("add_file", mapOf("path" to addition.path, "bindings" to addition.bindings,
-                            "declared" to declared(addition.path)))
+                            "local" to addition.local) + declarationFields(addition.path))
+                        is Addition.File -> process.request("add_file", mapOf("path" to addition.path, "bindings" to addition.bindings) + declarationFields(addition.path))
                     }
                     request.handle { result, error ->
                             onEdt(epoch) {
