@@ -1,8 +1,13 @@
-// CommonJS file: only module.exports is available (as the default export).
-// Pin it or use "Add File to JS Console": legacy_default.greet("you")
-// As the editor file, it is reachable as globalThis['legacy.cjs'].default.greet("you")
+// CommonJS file: names in module.exports work by name; other top-level names cannot be exposed.
+// Try:
+//   greet('you')   -> 'hello, you'
+//   calls          -> ReferenceError explaining that calls is not in module.exports of legacy.cjs
+//   globalThis['legacy.cjs'].default   -> the whole module.exports object
+
+let calls = 0;
 
 function greet(name) {
+  calls++;
   return `hello, ${name}`;
 }
 
