@@ -54,6 +54,11 @@ tasks.test {
     }
 }
 
+// The sandbox IDE writes a development trace of the console (input, output, status, runtime traffic).
+tasks.named<JavaExec>("runIde") {
+    systemProperty("js.console.trace", layout.buildDirectory.file("js-console-trace.log").get().asFile.absolutePath)
+}
+
 intellijPlatform {
     buildSearchableOptions = false
     sandboxContainer = layout.buildDirectory.dir("isolated-ide")

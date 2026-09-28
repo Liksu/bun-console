@@ -388,3 +388,29 @@ test("console output arrives on the control channel before the command's result"
     child.kill();
   }
 }, 15000);
+
+test("files created after Bun started load, and CommonJS names explain what is missing", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "js-console-late-files-"));
+  const ide = (name) => join(directory, name).replaceAll("\\", "/");
+  writeFileSync(ide("first.ts"), "export const first = 1;");
+  const runtime = await start();
+  const run = (code) => runtime.request("eval", { code });
+  try {
+    await runtime.request("load", { path: ide("first.ts") });
+    expect((await run("first")).text).toBe("1");
+    writeFileSync(ide("late.ts"), "function hidden() { return 'h'; }\nexport const late = 2;");
+    writeFileSync(ide("sibling.ts"), "export const sibling = 3;");
+    await runtime.request("load", { path: ide("late.ts"), declared: ["hidden", "late"] });
+    expect((await run("[late, hidden()].join()")).text).toBe("'2,h'");
+    const siblingImport = [{ specifier: "./sibling", bindings: [{ imported: "sibling", local: "sibling" }] }];
+    expect((await runtime.request("eval", { code: "sibling", imports: siblingImport })).text).toBe("3");
+    writeFileSync(ide("legacy.cjs"), "let count = 0;\nfunction greet(name) { count++; return `hello, ${name}`; }\nmodule.exports = { greet };");
+    const legacy = await runtime.request("load", { path: ide("legacy.cjs"), declared: ["count", "greet"] });
+    expect(legacy.names).toEqual(["count", "greet"]);
+    expect((await run("greet('you')")).text).toBe("'hello, you'");
+    await expect(run("count")).rejects.toThrow("not in module.exports of legacy.cjs");
+  } finally {
+    await runtime.stop();
+    if (directory.startsWith(tmpdir())) rmSync(directory, { recursive: true, force: true });
+  }
+}, 15000);

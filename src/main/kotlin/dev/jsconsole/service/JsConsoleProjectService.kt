@@ -33,6 +33,7 @@ import dev.jsconsole.runtime.BunRuntimeLocator
 import dev.jsconsole.runtime.BootstrapManager
 import dev.jsconsole.runtime.ConsoleFiles
 import dev.jsconsole.runtime.ConsoleImports
+import dev.jsconsole.runtime.ConsoleTrace
 import dev.jsconsole.runtime.TopLevelDeclarations
 import dev.jsconsole.settings.JsConsoleSettings
 import dev.jsconsole.ui.ConsoleStyle
@@ -360,6 +361,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
 
     fun execute(source: String, styles: List<ConsoleStyle> = emptyList()) {
         if (source.isBlank()) return
+        ConsoleTrace.log("INPUT", source + (pausedSession()?.let { "   [paused frame: ${it.sessionName}]" } ?: ""))
         if (!debugPaused) refreshContextIfNeeded()
         val id = ++command
         history.add(source)
@@ -638,6 +640,8 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
 
     private fun followEditor() {
         val next = activeFile()
+        ConsoleTrace.log("EDITOR", FileEditorManager.getInstance(project).selectedFiles.firstOrNull()?.path.toString() +
+            if (next == context) " (context unchanged)" else " -> context ${next?.path ?: "plain JavaScript"}")
         if (next == context) return
         context = next
         loadContext(contextReady ?: ready ?: return, generation)
@@ -724,7 +728,14 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         return saved
     }
 
-    private fun updateStatus(value: String) { status = value; statusChanged?.invoke(value) }
+    private var tracedTabs = ""
+    private fun updateStatus(value: String) {
+        if (value != status) ConsoleTrace.log("STATUS", value)
+        val tabs = contextTabs().joinToString(" | ") { (if (it.active) "*" else "") + it.label }
+        if (tabs != tracedTabs) { tracedTabs = tabs; ConsoleTrace.log("TABS", tabs) }
+        status = value
+        statusChanged?.invoke(value)
+    }
     private fun updateContextStatus() = updateStatus(contextStatusText())
     private fun contextStatusText(): String {
         val restart = restartPaths.firstOrNull()
@@ -754,6 +765,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         writeEntry(text, if (error) OutputKind.ERROR else OutputKind.NORMAL)
     }
     private fun writeEntry(text: String, kind: OutputKind, styles: List<ConsoleStyle> = emptyList()) {
+        if (text.isNotBlank() || kind == OutputKind.CLEAR) ConsoleTrace.log("OUT:" + kind.name.take(5), ConsoleTrace.clip(text))
         entries.add(Entry(text, kind, styles.toList()))
         if (entries.size > 2000) entries.removeAt(0)
         append?.invoke(text, kind, styles)

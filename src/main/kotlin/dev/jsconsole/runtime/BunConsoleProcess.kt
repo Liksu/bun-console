@@ -108,6 +108,7 @@ class BunConsoleProcess(
                             continue
                         }
                         val id = message.get("id")?.asLong ?: continue
+                        ConsoleTrace.log("<- #$id", ConsoleTrace.clip(line))
                         val job = jobs.remove(id) ?: continue
                         if (message.get("ok")?.asBoolean == true) job.complete(message)
                         else job.completeExceptionally(IllegalStateException(message.get("error")?.asString ?: "Evaluation failed"))
@@ -115,6 +116,7 @@ class BunConsoleProcess(
                     fail("Bun connection closed")
                 } catch (error: Exception) { fail(error.message ?: "Bun connection failed") }
             }
+            ConsoleTrace.log("PROCESS", "Bun ${hello.get("version")?.asString} pid ${child.pid()} ${arguments.joinToString(" ")}")
             output("Bun ${hello.get("version")?.asString} ready\n", false)
             this
         } catch (error: Exception) {
@@ -134,6 +136,7 @@ class BunConsoleProcess(
         try {
             val message = gson.toJson(fields + mapOf("id" to id, "op" to operation))
             require(message.length <= 1_000_000) { "Command exceeds 1 MB" }
+            ConsoleTrace.log("-> #$id", ConsoleTrace.clip(message))
             val sink = writer ?: error("Bun is not ready")
             sink.write(message)
             sink.newLine()
@@ -143,7 +146,7 @@ class BunConsoleProcess(
     }
 
     private fun fail(reason: String) {
-        if (!closed.get()) { close(); stopped(reason) }
+        if (!closed.get()) { ConsoleTrace.log("PROCESS", "stopped: $reason"); close(); stopped(reason) }
     }
 
     override fun close() {

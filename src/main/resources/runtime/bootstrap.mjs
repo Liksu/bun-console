@@ -209,10 +209,12 @@ function exposeDeclarations(record, declared) {
   if (!Array.isArray(declared)) throw new Error("Invalid declarations");
   const loader = DECLARATION_LOADERS[extname(record.path).toLowerCase()];
   const exported = scanExports(record.path);
-  // A CommonJS file would stop being CommonJS with an export statement.
-  record.locals = loader && !COMMON_JS.test(readFileSync(record.path, "utf8"))
-    ? [...new Set(declared)].filter((name) => typeof name === "string" && !exported.has(name) && isIdentifier(name))
-    : [];
+  const names = [...new Set(declared)].filter((name) => typeof name === "string" && !exported.has(name) && isIdentifier(name));
+  // A CommonJS file would stop being CommonJS with an export statement. Its
+  // names are only candidates: those missing from module.exports report why.
+  const commonJs = !loader || COMMON_JS.test(readFileSync(record.path, "utf8"));
+  record.locals = commonJs ? [] : names;
+  record.commonJsCandidates = commonJs ? names : [];
   if (!record.locals.length || hooked.has(record.moduleId)) return;
   hooked.add(record.moduleId);
   const file = resolve(record.path);
@@ -238,6 +240,7 @@ function moduleNames(record) {
     ? new Set(Object.keys(readModule(record)))
     : scanExports(record.path);
   const hidden = [];
+  if (!loaded) for (const name of record.commonJsCandidates ?? []) names.add(name);
   for (const name of record.locals ?? []) {
     if (!loaded || record.exposed?.has(name)) names.add(name);
     else hidden.push(name);
@@ -254,8 +257,9 @@ function moduleRecord(path) {
 
 function readModule(record) {
   if (!record.namespace) {
-    // Bun's synchronous require shares ES module instances with import().
-    const loaded = require(record.path);
+    // Bun's synchronous require shares ES module instances with import(). On
+    // Windows it needs the native path: `D:/…` fails for files created after Bun started.
+    const loaded = require(resolve(record.path));
     // A CommonJS file yields module.exports; present it like import() does.
     record.namespace = Object.prototype.toString.call(loaded) === "[object Module]" ? loaded
       : Object.freeze({ ...(loaded !== null && typeof loaded === "object" ? loaded : {}), default: loaded });
@@ -276,6 +280,8 @@ function reconcile(record) {
   if (namespace == null || typeof namespace !== "object") return;
   for (const [name, binding] of bindings) {
     if (binding.moduleId !== record.moduleId || binding.imported === "*" || !ownsBinding(name, binding)) continue;
+    // CommonJS candidates stay bound so that reading them explains module.exports.
+    if (record.commonJsCandidates?.includes(binding.imported)) continue;
     if ((binding.origin === "current" || binding.origin === "file") && !(binding.imported in namespace)) {
       delete server.context[name];
       bindings.delete(name);
@@ -289,7 +295,15 @@ function reconcile(record) {
 }
 
 function reader(record, imported) {
-  return imported === "*" ? () => readModule(record) : () => readModule(record)[imported];
+  if (imported === "*") return () => readModule(record);
+  return () => {
+    const namespace = readModule(record);
+    if (imported in namespace) return namespace[imported];
+    const file = basename(record.path);
+    throw new ReferenceError(record.commonJsCandidates?.includes(imported)
+      ? `${imported} is not in module.exports of ${file} (a CommonJS file exposes only module.exports)`
+      : `${imported} is not defined: ${file} no longer exports it`);
+  };
 }
 
 function clearAutomaticFileBindings() {
@@ -353,7 +367,7 @@ async function importModules(imports = []) {
   // Validate all bindings before importing, so a collision cannot overwrite user state.
   const planned = imports.map(({ specifier, bindings: names }) => {
     if (typeof specifier !== "string" || !Array.isArray(names)) throw new Error("Invalid import declaration");
-    const resolved = Bun.resolveSync(specifier, currentFile ? dirname(currentFile) : process.cwd());
+    const resolved = Bun.resolveSync(specifier, currentFile ? dirname(resolve(currentFile)) : process.cwd());
     const moduleId = isAbsolute(resolved) ? pathToFileURL(resolved).href : resolved;
     for (const { imported, local } of names) {
       if (typeof imported !== "string" || !isIdentifier(local)) throw new Error("Invalid import binding");
