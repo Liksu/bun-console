@@ -23,22 +23,25 @@ delete process.env.JS_CONSOLE_TOKEN;
 // Console output travels on the control socket, so the IDE shows it in order
 // with command results (as in DevTools). Output of child processes that
 // inherit Bun's file descriptors still arrives through the process pipes.
-function sendOutput(text, error) { if (text) send({ event: "output", text, error }); }
-for (const [stream, error] of [[process.stdout, false], [process.stderr, true]]) {
+function sendOutput(text, level) { if (text) send({ event: "output", text, level, error: level === "error" }); }
+for (const [stream, level] of [[process.stdout, "log"], [process.stderr, "error"]]) {
   const decoder = new StringDecoder("utf8");
   stream.write = (chunk, encoding, callback) => {
     if (typeof encoding === "function") { callback = encoding; encoding = undefined; }
     try {
-      sendOutput(typeof chunk === "string" ? chunk : decoder.write(Buffer.from(chunk)), error);
+      sendOutput(typeof chunk === "string" ? chunk : decoder.write(Buffer.from(chunk)), level);
     } catch {}
     if (typeof callback === "function") queueMicrotask(callback);
     return true;
   };
 }
-const consoleStream = (error) => new Writable({
-  write(chunk, _, callback) { sendOutput(String(chunk), error); callback(); },
+const consoleStream = (level) => new Writable({
+  write(chunk, _, callback) { sendOutput(String(chunk), level); callback(); },
 });
-globalThis.console = new Console({ stdout: consoleStream(false), stderr: consoleStream(true), colorMode: false });
+globalThis.console = new Console({ stdout: consoleStream("log"), stderr: consoleStream("error"), colorMode: false });
+// DevTools shows warnings apart from errors (yellow rather than red).
+const warnings = new Console({ stdout: consoleStream("warn"), stderr: consoleStream("warn"), colorMode: false });
+globalThis.console.warn = (...args) => warnings.warn(...args);
 
 function formatError(error) {
   try {
@@ -78,6 +81,9 @@ for (const name of builtinModules) {
     delete server.context[name];
   }
 }
+// Globals that exist before any console input; later ones are the user's (for completion).
+const baselineGlobals = new Set(Object.getOwnPropertyNames(globalThis));
+const IDENTIFIER = /^[$_\p{ID_Start}][$\u200c\u200d\p{ID_Continue}]*$/u;
 const bindings = new Map();
 const addedFiles = new Map();
 const fileNamespaces = new Map();
@@ -141,6 +147,19 @@ function evaluate(source) {
       } catch (error) { evaluation.reject(error); }
     });
   });
+}
+
+/** Names console code has defined on the global object, for IDE completion. */
+function userGlobals() {
+  const names = [];
+  for (const name of Object.getOwnPropertyNames(globalThis)) {
+    if (baselineGlobals.has(name) || !IDENTIFIER.test(name)) continue;
+    const binding = bindings.get(name);
+    if (binding && ownsBinding(name, binding)) continue;
+    names.push(name);
+    if (names.length >= 5000) break;
+  }
+  return names;
 }
 
 function render(value) {
@@ -574,7 +593,7 @@ async function dispatch(request) {
         delete server.context[name];
         bindings.delete(name);
       }
-      return { [DEFERRED]: evaluate(request.code).then((value) => ({ text: render(value) })) };
+      return { [DEFERRED]: evaluate(request.code).then((value) => ({ text: render(value), globals: userGlobals() })) };
     }
     case "load": return loadCurrent(request.path, request.declared);
     case "add_symbol": return addSymbol(request.path, request.imported, request.local, request.declared);

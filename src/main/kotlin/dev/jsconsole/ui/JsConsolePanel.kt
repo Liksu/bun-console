@@ -159,6 +159,7 @@ class JsConsolePanel(private val project: Project, statusChanged: (String) -> Un
                 JsConsoleProjectService.OutputKind.RESULT -> syntaxPrinter.print(text, append = output::print)
                 JsConsoleProjectService.OutputKind.CLEAR -> output.clear()
                 JsConsoleProjectService.OutputKind.ERROR -> output.print(text, ConsoleViewContentType.ERROR_OUTPUT)
+                JsConsoleProjectService.OutputKind.WARNING -> output.print(text, ConsoleViewContentType.LOG_WARNING_OUTPUT)
                 JsConsoleProjectService.OutputKind.NORMAL -> output.print(text, ConsoleViewContentType.NORMAL_OUTPUT)
             }
         }, statusChanged)

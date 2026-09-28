@@ -18,11 +18,14 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
+/** Kind of text the Bun process prints: DevTools colors warnings apart from errors. */
+enum class ConsoleOutput { NORMAL, ERROR, WARNING }
+
 class BunConsoleProcess(
     private val executable: String,
     private val bootstrap: Path,
     private val workingDirectory: Path,
-    private val output: (String, Boolean) -> Unit,
+    private val output: (String, ConsoleOutput) -> Unit,
     private val stopped: (String) -> Unit,
     private val debuggerAttach: ((String) -> CompletableFuture<Unit>)? = null,
 ) : AutoCloseable {
@@ -74,14 +77,14 @@ class BunConsoleProcess(
                                 val delimiter = line.contains("Bun Inspector")
                                 val informational = inspectorBanner || delimiter
                                 if (delimiter) inspectorBanner = !inspectorBanner
-                                output("$line\n", !informational)
+                                output("$line\n", if (informational) ConsoleOutput.NORMAL else ConsoleOutput.ERROR)
                             }
                         } else {
                             val buffer = CharArray(4096)
                             while (true) {
                                 val count = reader.read(buffer)
                                 if (count < 0) break
-                                output(String(buffer, 0, count), error)
+                                output(String(buffer, 0, count), if (error) ConsoleOutput.ERROR else ConsoleOutput.NORMAL)
                             }
                         }
                     }
@@ -104,7 +107,11 @@ class BunConsoleProcess(
                         val line = reader.readLine() ?: break
                         val message = JsonParser.parseString(line).asJsonObject
                         if (message.get("event")?.asString == "output") {
-                            output(message.get("text")?.asString.orEmpty(), message.get("error")?.asBoolean == true)
+                            output(message.get("text")?.asString.orEmpty(), when (message.get("level")?.asString) {
+                                "warn" -> ConsoleOutput.WARNING
+                                "error" -> ConsoleOutput.ERROR
+                                else -> ConsoleOutput.NORMAL
+                            })
                             continue
                         }
                         val id = message.get("id")?.asLong ?: continue
@@ -117,7 +124,7 @@ class BunConsoleProcess(
                 } catch (error: Exception) { fail(error.message ?: "Bun connection failed") }
             }
             ConsoleTrace.log("PROCESS", "Bun ${hello.get("version")?.asString} pid ${child.pid()} ${arguments.joinToString(" ")}")
-            output("Bun ${hello.get("version")?.asString} ready\n", false)
+            output("Bun ${hello.get("version")?.asString} ready\n", ConsoleOutput.NORMAL)
             this
         } catch (error: Exception) {
             close()

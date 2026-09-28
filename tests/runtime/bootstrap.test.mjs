@@ -377,10 +377,11 @@ test("console output arrives on the control channel before the command's result"
   child.stdout.on("data", (chunk) => { piped += chunk; });
   try {
     await ready;
-    socket.write(`${JSON.stringify({ id: 1, op: "eval", code: "console.log('first', { n: 1 }); console.error('second'); process.stdout.write('third\\n'); 42" })}\n`);
+    socket.write(`${JSON.stringify({ id: 1, op: "eval", code: "console.log('first', { n: 1 }); console.error('second'); process.stdout.write('third\\n'); console.warn('fourth'); var declared = 1; function helper() {} 42" })}\n`);
     for (let i = 0; i < 200 && !events.some((event) => event.id === 1); i++) await Bun.sleep(10);
-    const order = events.map((event) => event.id === 1 ? `result:${event.text}` : `${event.error ? "err" : "out"}:${event.text}`);
-    expect(order).toEqual(["out:first { n: 1 }\n", "err:second\n", "out:third\n", "result:42"]);
+    const order = events.map((event) => event.id === 1 ? `result:${event.text}` : `${event.level}:${event.text}`);
+    expect(order).toEqual(["log:first { n: 1 }\n", "error:second\n", "log:third\n", "warn:fourth\n", "result:42"]);
+    expect(events.find((event) => event.id === 1).globals).toEqual(["declared", "helper"]);
     expect(piped).toBe("");
   } finally {
     socket?.destroy();

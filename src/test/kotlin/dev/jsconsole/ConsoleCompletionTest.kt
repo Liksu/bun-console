@@ -1,6 +1,7 @@
 package dev.jsconsole
 
 import com.intellij.codeInsight.lookup.Lookup
+import com.intellij.lang.javascript.inspections.JSUnresolvedReferenceInspection
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.testFramework.PlatformTestUtil
@@ -58,6 +59,22 @@ class ConsoleCompletionTest : BasePlatformTestCase() {
             assertEquals("initialText", myFixture.editor.document.text)
             service.execute(myFixture.editor.document.text)
             PlatformTestUtil.waitWithEventsDispatching("Added export did not evaluate", { output.contains("[2] 'from b'") }, 20)
+
+            // Names defined by earlier console input are offered and not marked unresolved.
+            service.execute("const testAutocomplete = 42; function testHelper() {}")
+            PlatformTestUtil.waitWithEventsDispatching("Console globals not reported", { "testAutocomplete" in service.contextNames }, 20)
+            assertTrue(service.contextNames.contains("testHelper"))
+            val declaredInput = myFixture.configureByText("declared-console.js", "testA<caret>")
+            declaredInput.putUserData(ConsoleCompletionContributor.INPUT, true)
+            val declaredItems = myFixture.completeBasic()
+            if (declaredItems != null) assertTrue(declaredItems.any { it.lookupString == "testAutocomplete" })
+            else assertEquals("testAutocomplete", myFixture.editor.document.text)
+            myFixture.configureByText("resolved-console.js", "testAutocomplete + definitelyMissingName")
+                .putUserData(ConsoleCompletionContributor.INPUT, true)
+            myFixture.enableInspections(JSUnresolvedReferenceInspection())
+            val highlights = myFixture.doHighlighting().mapNotNull { it.description }
+            assertTrue("Unknown names must still be reported: $highlights", highlights.any { "definitelyMissingName" in it })
+            assertTrue("Console-defined name marked unresolved: $highlights", highlights.none { "testAutocomplete" in it })
         } finally {
             service.stop().get(5, TimeUnit.SECONDS)
             service.dispose()

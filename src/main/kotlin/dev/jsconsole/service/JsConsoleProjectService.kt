@@ -33,6 +33,7 @@ import dev.jsconsole.runtime.BunRuntimeLocator
 import dev.jsconsole.runtime.BootstrapManager
 import dev.jsconsole.runtime.ConsoleFiles
 import dev.jsconsole.runtime.ConsoleImports
+import dev.jsconsole.runtime.ConsoleOutput
 import dev.jsconsole.runtime.ConsoleTrace
 import dev.jsconsole.runtime.TopLevelDeclarations
 import dev.jsconsole.settings.JsConsoleSettings
@@ -54,7 +55,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         val JAVASCRIPT_FRAME_EXTENSIONS = setOf("js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx", "vue", "svelte", "astro", "html", "htm")
     }
     private val background = Executors.newSingleThreadExecutor { task -> Thread(task, "JS Console lifecycle").apply { isDaemon = true } }
-    enum class OutputKind { NORMAL, ERROR, JAVASCRIPT, RESULT, CLEAR }
+    enum class OutputKind { NORMAL, ERROR, WARNING, JAVASCRIPT, RESULT, CLEAR }
     private data class Entry(val text: String, val kind: OutputKind, val styles: List<ConsoleStyle>)
     private val entries = mutableListOf<Entry>()
     private var append: ((String, OutputKind, List<ConsoleStyle>) -> Unit)? = null
@@ -125,6 +126,8 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
     val history = mutableListOf<String>()
     private var currentNames = emptySet<String>()
     private var addedNames = emptySet<String>()
+    /** Globals defined by console input, as reported by the runtime after each command. */
+    private var consoleNames = emptySet<String>()
     @Volatile var contextNames: Set<String> = emptySet()
         private set
     var status: String = "Stopped"
@@ -310,6 +313,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         runtime = null
         currentNames = emptySet()
         addedNames = emptySet()
+        consoleNames = emptySet()
         contextNames = emptySet()
         context = activeFile()
         updateStatus("Starting Bun…")
@@ -329,7 +333,13 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
                     } })
             } else null
             val backend = BunConsoleProcess(executable, script, cwd,
-                { text, error -> onEdt(epoch) { write(text, error) } },
+                { text, stream -> onEdt(epoch) {
+                    writeEntry(text, when (stream) {
+                        ConsoleOutput.NORMAL -> OutputKind.NORMAL
+                        ConsoleOutput.ERROR -> OutputKind.ERROR
+                        ConsoleOutput.WARNING -> OutputKind.WARNING
+                    })
+                } },
                 { reason -> onEdt(epoch) {
                     debugger?.close()
                     if (bridge != null && reason.startsWith(DEBUGGER_ATTACH_FAILED)) {
@@ -392,6 +402,10 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         }, background)
             .whenComplete { result, error -> onEdt(epoch) {
                 running.remove(id)
+                result?.getAsJsonArray("globals")?.let { globals ->
+                    consoleNames = globals.map { it.asString }.toSet()
+                    refreshCompletionNames()
+                }
                 if (error != null) write("[$id] ${message(error)}\n", true)
                 else {
                     write("[$id] ")
@@ -751,7 +765,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
                 else -> ""
             }
     }
-    private fun refreshCompletionNames() { contextNames = currentNames + addedNames }
+    private fun refreshCompletionNames() { contextNames = currentNames + addedNames + consoleNames }
     private fun refreshAddedNames() {
         addedNames = additions.flatMap {
             when (it) {
