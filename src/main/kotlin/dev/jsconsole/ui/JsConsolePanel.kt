@@ -24,7 +24,13 @@ import com.intellij.psi.PsiDocumentManager
 import dev.jsconsole.service.JsConsoleProjectService
 import dev.jsconsole.settings.JsConsoleConfigurable
 import dev.jsconsole.settings.JsConsoleSettings
+import com.intellij.openapi.editor.markup.TextAttributes
+import com.intellij.ui.JBColor
+import com.intellij.ui.components.JBLabel
+import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
+import java.awt.Color
+import java.awt.Font
 import java.awt.Dimension
 import java.awt.event.ActionEvent
 import java.awt.event.InputEvent
@@ -40,6 +46,11 @@ import javax.swing.KeyStroke
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
 
+// DevTools colors: warnings are dark amber on pale yellow (light) or yellow on dark olive (dark).
+private val WARNING_COLOR = JBColor(Color(0x8A5A00), Color(0xFFD479))
+private val WARNING_OUTPUT = ConsoleViewContentType("JS Console warning",
+    TextAttributes(WARNING_COLOR, JBColor(Color(0xFFFBE5), Color(0x3A3217)), null, null, Font.PLAIN))
+
 class JsConsolePanel(private val project: Project, statusChanged: (String) -> Unit = {}) : JPanel(BorderLayout()), Disposable {
     private val service = project.getService(JsConsoleProjectService::class.java)
     private val output = TextConsoleBuilderFactory.getInstance().createBuilder(project).console
@@ -52,6 +63,7 @@ class JsConsolePanel(private val project: Project, statusChanged: (String) -> Un
     private var runShortcutRegistered = false
     private val runButton = JButton("Run").apply { isEnabled = false; addActionListener { execute() } }
     private val runHint = JLabel()
+    private val statusLine = JBLabel()
 
     private fun command(text: String, description: String, enabled: () -> Boolean = { true }, perform: () -> Unit) =
         object : DumbAwareAction(text, description, null) {
@@ -116,6 +128,10 @@ class JsConsolePanel(private val project: Project, statusChanged: (String) -> Un
         input.preferredSize = Dimension(500, 100)
         entry.add(JLabel("  >  "), BorderLayout.WEST)
         entry.add(input, BorderLayout.CENTER)
+        statusLine.font = statusLine.font.deriveFont((statusLine.font.size2D - 1f).coerceAtLeast(9f))
+        statusLine.border = JBUI.Borders.empty(2, 8)
+        statusLine.isVisible = false
+        entry.add(statusLine, BorderLayout.NORTH)
         val runControl = JPanel(BorderLayout()).apply {
             add(runButton, BorderLayout.CENTER)
             add(runHint, BorderLayout.SOUTH)
@@ -159,11 +175,23 @@ class JsConsolePanel(private val project: Project, statusChanged: (String) -> Un
                 JsConsoleProjectService.OutputKind.RESULT -> syntaxPrinter.print(text, append = output::print)
                 JsConsoleProjectService.OutputKind.CLEAR -> output.clear()
                 JsConsoleProjectService.OutputKind.ERROR -> output.print(text, ConsoleViewContentType.ERROR_OUTPUT)
-                JsConsoleProjectService.OutputKind.WARNING -> output.print(text, ConsoleViewContentType.LOG_WARNING_OUTPUT)
+                JsConsoleProjectService.OutputKind.WARNING -> output.print(text, WARNING_OUTPUT)
                 JsConsoleProjectService.OutputKind.NORMAL -> output.print(text, ConsoleViewContentType.NORMAL_OUTPUT)
             }
-        }, statusChanged)
+        }, { status -> showStatus(status); statusChanged(status) })
         historyIndex = service.history.size
+    }
+
+    /** Text of the status line above the input, or null while it is hidden. */
+    internal val statusText: String? get() = statusLine.text.takeIf { statusLine.isVisible }
+
+    /** The context tabs already name the file; the line shows only what is happening (running, busy, reload…). */
+    private fun showStatus(status: String) {
+        val label = service.contextTabs().firstOrNull { it.active }?.label
+        val detail = if (label != null && status.startsWith(label)) status.removePrefix(label).removePrefix(" · ") else status
+        statusLine.text = detail
+        statusLine.isVisible = detail.isNotBlank()
+        statusLine.foreground = if (service.blocked) WARNING_COLOR else UIManager.getColor("Label.disabledForeground")
     }
 
     private fun bind(name: String, key: KeyStroke, action: () -> Unit) {
