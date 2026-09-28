@@ -47,7 +47,11 @@ class BunDebuggerServiceTest : BasePlatformTestCase() {
             service.execute("twice(21)")
             PlatformTestUtil.waitWithEventsDispatching("Breakpoint not hit: $output", { service.debugPaused }, 30)
             PlatformTestUtil.waitWithEventsDispatching("Paused status not shown: ${service.status}", { service.status.contains("paused at") }, 10)
-            assertTrue(service.contextTabs().first().label.contains("paused at"))
+            assertFalse("Pause location belongs in the status line", service.contextTabs().first().label.contains("paused"))
+            assertTrue("Frame locals not offered: ${service.pausedFrameNames()}",
+                com.intellij.openapi.application.ReadAction.compute<Boolean, RuntimeException> {
+                    service.pausedFrameNames().containsAll(listOf("x", "y", "twice"))
+                })
             service.execute("x + y")
             PlatformTestUtil.waitWithEventsDispatching("Paused input did not use frame: $output", { output.contains("[2] 63") }, 20)
             WriteAction.run<RuntimeException> { manager.removeBreakpoint(breakpoint) }

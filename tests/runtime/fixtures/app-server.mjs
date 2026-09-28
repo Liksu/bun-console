@@ -3,7 +3,8 @@
 // 1. Right-click this file → Debug 'app-server.mjs' (Node.js or Bun, either works).
 // 2. Put a breakpoint on the `const reply` line; it is hit every 2 seconds.
 // 3. With the program paused, open JS Console (its Debugger toggle may stay OFF).
-//    The context tab shows "paused in app-server.mjs at app-server.mjs:15".
+//    The status line above the input shows "paused in app-server.mjs at app-server.mjs:15";
+//    completion (Ctrl+Space) offers request, reply, counter, handle.
 // 4. Type: request      request.path      counter      reply   (undefined until the line runs)
 // 5. ⋮ → Continue resumes the program; the next console input runs in the console's own Bun again.
 // Stop the Debug session when done.

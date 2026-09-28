@@ -28,6 +28,7 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.google.gson.JsonObject
 import dev.jsconsole.debug.BunDebugBridge
 import dev.jsconsole.debug.PausedFrameEvaluator
+import dev.jsconsole.debug.PausedFrameNames
 import dev.jsconsole.runtime.BunConsoleProcess
 import dev.jsconsole.runtime.BunRuntimeLocator
 import dev.jsconsole.runtime.BootstrapManager
@@ -82,6 +83,10 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
     fun stepOver() { pausedSession()?.stepOver(false) }
     fun stepInto() { pausedSession()?.stepInto() }
     fun stepOut() { pausedSession()?.stepOut() }
+
+    /** Names in scope where execution is paused, for completion; empty while running. Call in a read action. */
+    fun pausedFrameNames(): Set<String> =
+        pausedSession()?.currentPosition?.let { PausedFrameNames.at(project, it) }.orEmpty()
 
     private fun pausedLabel(): String {
         val session = pausedSession() ?: return ""
@@ -149,14 +154,14 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         val currentPath = context?.path
         val paths = (pinnedPaths + listOfNotNull(currentPath)).distinct()
         val labels = shortestUniqueFileLabels(paths)
-        val paused = pausedLabel()
+        // Tabs only name the files; the pause location goes to the status line, which has room for it.
         val tabs = pinnedPaths.map { path ->
-            ContextTab(path, "${labels.getValue(path)} · pinned" + if (path == currentPath) paused else "", path, path == currentPath)
+            ContextTab(path, "${labels.getValue(path)} · pinned", path, path == currentPath)
         }
         return if (currentPath != null && currentPath !in pinnedPaths) {
-            tabs + ContextTab(currentPath, "${labels.getValue(currentPath)} · follows editor$paused", currentPath, true)
+            tabs + ContextTab(currentPath, "${labels.getValue(currentPath)} · follows editor", currentPath, true)
         } else if (currentPath == null) {
-            tabs + ContextTab("plain-javascript", "JavaScript · follows editor$paused", null, true)
+            tabs + ContextTab("plain-javascript", "JavaScript · follows editor", null, true)
         } else tabs
     }
 
@@ -757,9 +762,11 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         val changed = stalePaths.firstOrNull { it == context?.path || it in addedFilePaths }
         val elapsed = running.values.firstOrNull()?.let { System.nanoTime() - it } ?: 0L
         val seconds = TimeUnit.NANOSECONDS.toSeconds(elapsed)
+        val paused = pausedLabel()
         return (contextTabs().firstOrNull { it.active }?.label ?: "JavaScript") +
             when {
                 blocked -> " · JavaScript is busy ($seconds s); Restart Runtime to stop it"
+                paused.isNotEmpty() -> "$paused; input evaluates in this frame"
                 !debugPaused && elapsed >= SHOW_RUNNING_AFTER -> " · running…" + if (seconds > 0) " $seconds s" else ""
                 restart != null -> " · ${Path.of(restart).fileName} changed; Restart Runtime to update dependencies"
                 changed != null -> " · ${Path.of(changed).fileName} changed; updates when console is focused"

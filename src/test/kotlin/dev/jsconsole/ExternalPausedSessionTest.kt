@@ -61,6 +61,10 @@ class ExternalPausedSessionTest : BasePlatformTestCase() {
             service.attach({ text, _, _ -> output.append(text) }, {})
             PlatformTestUtil.waitWithEventsDispatching("Pause not shown: ${service.status}", { "paused in" in service.status }, 20)
             assertTrue(service.debugPaused)
+            assertTrue("Frame names not offered: ${service.pausedFrameNames()}",
+                com.intellij.openapi.application.ReadAction.compute<Boolean, RuntimeException> {
+                    service.pausedFrameNames().containsAll(listOf("request", "reply", "handle"))
+                })
             service.execute("request + '!'")
             PlatformTestUtil.waitWithEventsDispatching("Not evaluated in the app frame: $output", {
                 output.contains("[1] 'abc!'") || output.contains("[1] \"abc!\"") || output.contains("[1] abc!")

@@ -15,7 +15,8 @@ class ConsoleCompletionContributor : CompletionContributor() {
         if (parameters.originalFile.getUserData(INPUT) != true) return
         val reference = parameters.position.parent as? JSReferenceExpression ?: return
         if (reference.qualifier != null) return
-        val names = parameters.originalFile.project.getService(JsConsoleProjectService::class.java).contextNames
+        val service = parameters.originalFile.project.getService(JsConsoleProjectService::class.java)
+        val names = service.contextNames + service.pausedFrameNames()
         names.forEach { result.addElement(LookupElementBuilder.create(it).withTypeText("JS Console", true)) }
         val projectFiles = ProjectFileIndex.getInstance(parameters.originalFile.project)
         result.runRemainingContributors(parameters) { candidate ->

@@ -180,7 +180,7 @@ configuration uses `build/isolated-ide`). Open a disposable JS/TS project.
     switching to Debug. Even if Debug appears briefly during adapter startup, it
     must be hidden and JS Console must then be shown and activated. With a
     breakpoint inside `twice`, run `twice(21)`: Debug
-    should activate only when execution pauses. The context tab should show
+    should activate only when execution pauses. The status line above the input should show
     `paused at ...`; `x` and `y` typed into the same input should evaluate to `21`
     and `42`. Step Over and Continue in the native menu should work, and Continue
     should finish the original command under its original number. While paused,
@@ -212,7 +212,7 @@ configuration uses `build/isolated-ide`). Open a disposable JS/TS project.
 22. Run `console.log(1); console.error(2); 3`: `1`, `2` (red) and then `[N] 3`
     appear in this order, every time.
 23. Start a small Node.js or Bun script with WebStorm's own Debug and stop it at a
-    breakpoint. In JS Console (Debugger toggle off), the tab shows
+    breakpoint. In JS Console (Debugger toggle off), the status line shows
     `paused in <session> at file:line`; a local variable typed into the console
     evaluates in that frame. Continue from the ⋮ menu resumes the script; the next
     input runs in the console's Bun runtime again.

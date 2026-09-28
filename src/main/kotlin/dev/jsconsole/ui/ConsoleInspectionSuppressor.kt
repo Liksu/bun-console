@@ -21,8 +21,9 @@ class ConsoleInspectionSuppressor : InspectionSuppressor {
             file.originalFile.getUserData(ConsoleCompletionContributor.INPUT) != true) return false
         val reference = PsiTreeUtil.getParentOfType(element, JSReferenceExpression::class.java, false) ?: return false
         if (reference.qualifier != null) return false
-        val names = file.project.serviceIfCreated<JsConsoleProjectService>()?.contextNames ?: return false
-        return reference.referenceName in names
+        val service = file.project.serviceIfCreated<JsConsoleProjectService>() ?: return false
+        val name = reference.referenceName ?: return false
+        return name in service.contextNames || name in service.pausedFrameNames()
     }
 
     override fun getSuppressActions(element: PsiElement?, toolId: String): Array<SuppressQuickFix> = SuppressQuickFix.EMPTY_ARRAY

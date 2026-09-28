@@ -139,7 +139,7 @@ command's result.
 When any JavaScript program you are debugging in this project is stopped at a
 breakpoint (for example a Node.js or Bun server started with WebStorm's Debug),
 the console behaves like DevTools on a paused page: input is evaluated in the
-selected stack frame of that session, and the context tab shows
+selected stack frame of that session (completion offers its locals), and the status line above the input shows
 `paused in <session> at file:line`. Continue/Step in the **⋮** menu control that
 session. After it resumes, input returns to the console's own Bun runtime.
 Top-level `const`, `let` and `class` declarations can be repeated in later

@@ -13,7 +13,7 @@ continues without breakpoints until Restart reconnects a new debug session.
 The session has a native Debug tab for breakpoint and frame state, but initialization
 returns focus to JS Console and keeps Debug out of the way until a breakpoint
 pauses execution. Continue and stepping are also available in the console menu
-while paused, and the active context tab shows the pause location. You can switch
+while paused, the status line above the input shows the pause location, and completion offers the names in scope. You can switch
 back to JS Console while paused and evaluate expressions in the selected frame.
 
 This uses the public **Experimental** `com.intellij.platform.dap` facade. The
