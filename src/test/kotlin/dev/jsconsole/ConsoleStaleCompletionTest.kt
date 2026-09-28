@@ -42,6 +42,8 @@ class ConsoleStaleCompletionTest : BasePlatformTestCase() {
                 service.status.contains("updates when console is focused")
             }, 20)
             service.togglePin()
+            // Pinning is asynchronous; the editor switch below must not race it.
+            PlatformTestUtil.waitWithEventsDispatching("Pin not applied", { service.pinned }, 20)
             assertTrue(service.status.contains("updates when console is focused"))
             myFixture.addFileToProject("lib/b.ts", "export const initialText = 'new';")
             val consoleFile = myFixture.configureByText("console.js", "ini<caret>")
