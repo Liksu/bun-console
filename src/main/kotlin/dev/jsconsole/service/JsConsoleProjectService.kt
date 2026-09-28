@@ -16,7 +16,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.xdebugger.XDebugProcess
 import com.intellij.xdebugger.XDebugSession
+import com.intellij.xdebugger.XDebugSessionListener
+import com.intellij.xdebugger.XDebuggerManagerListener
 import com.intellij.xdebugger.XDebuggerManager
 import com.intellij.xdebugger.breakpoints.XBreakpoint
 import com.intellij.xdebugger.breakpoints.XBreakpointListener
@@ -24,6 +27,7 @@ import com.intellij.xdebugger.breakpoints.XLineBreakpoint
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.google.gson.JsonObject
 import dev.jsconsole.debug.BunDebugBridge
+import dev.jsconsole.debug.PausedFrameEvaluator
 import dev.jsconsole.runtime.BunConsoleProcess
 import dev.jsconsole.runtime.BunRuntimeLocator
 import dev.jsconsole.runtime.BootstrapManager
@@ -45,6 +49,8 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
     private companion object {
         val SHOW_RUNNING_AFTER = TimeUnit.MILLISECONDS.toNanos(100)
         val PING_AFTER = TimeUnit.SECONDS.toNanos(1)
+        const val DEBUGGER_ATTACH_FAILED = "Debugger could not attach"
+        val JAVASCRIPT_FRAME_EXTENSIONS = setOf("js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx", "vue", "svelte", "astro", "html", "htm")
     }
     private val background = Executors.newSingleThreadExecutor { task -> Thread(task, "JS Console lifecycle").apply { isDaemon = true } }
     enum class OutputKind { NORMAL, ERROR, JAVASCRIPT, RESULT, CLEAR }
@@ -56,11 +62,42 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
     private var command = 0L
     private var runtime: BunConsoleProcess? = null
     private var debugger: BunDebugBridge? = null
-    val debugPaused: Boolean get() = debugger?.paused == true
-    fun resume() { debugger?.session?.takeIf { debugPaused }?.resume() }
-    fun stepOver() { debugger?.session?.takeIf { debugPaused }?.stepOver(false) }
-    fun stepInto() { debugger?.session?.takeIf { debugPaused }?.stepInto() }
-    fun stepOut() { debugger?.session?.takeIf { debugPaused }?.stepOut() }
+    /**
+     * The suspended JavaScript session that console input evaluates in, as in
+     * DevTools: this console's own runtime first, otherwise any JavaScript
+     * program the user is debugging in this project (the selected session first).
+     */
+    private fun pausedSession(): XDebugSession? {
+        debugger?.takeIf { it.paused }?.session?.let { return it }
+        val manager = XDebuggerManager.getInstance(project)
+        return (listOfNotNull(manager.currentSession) + manager.debugSessions).firstOrNull { session ->
+            session !== debugger?.session && session.isSuspended && session.currentStackFrame?.evaluator != null &&
+                session.currentPosition?.file?.extension?.lowercase() in JAVASCRIPT_FRAME_EXTENSIONS
+        }
+    }
+    val debugPaused: Boolean get() = pausedSession() != null
+    fun resume() { pausedSession()?.resume() }
+    fun stepOver() { pausedSession()?.stepOver(false) }
+    fun stepInto() { pausedSession()?.stepInto() }
+    fun stepOut() { pausedSession()?.stepOut() }
+
+    private fun pausedLabel(): String {
+        val session = pausedSession() ?: return ""
+        if (session === debugger?.session) return " · paused at ${debugger?.positionText ?: "selected frame"}"
+        val position = session.currentPosition?.let { " at ${it.file.name}:${it.line + 1}" }.orEmpty()
+        return " · paused in ${session.sessionName}$position"
+    }
+
+    /** Pauses of the user's own debug sessions change where input goes; keep the header in sync. */
+    private val sessionWatcher = object : XDebugSessionListener {
+        private fun changed() = ApplicationManager.getApplication().invokeLater({
+            if (!disposed && !project.isDisposed) updateContextStatus()
+        }, ModalityState.nonModal())
+        override fun sessionPaused() = changed()
+        override fun sessionResumed() = changed()
+        override fun sessionStopped() = changed()
+        override fun stackFrameChanged() = changed()
+    }
     private var ready: CompletableFuture<BunConsoleProcess>? = null
     private var contextReady: CompletableFuture<BunConsoleProcess>? = null
     private var context: VirtualFile? = null
@@ -80,6 +117,8 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
     private var refreshing = false
     @Volatile private var addedFilePaths: Set<String> = emptySet()
     private var disposed = false
+    /** Set when the IDE's debugger could not attach; the console then runs without it until toggled again. */
+    private var debuggerFailed = false
     val pinned: Boolean get() = context?.path in addedFilePaths
     val hasCurrentFile: Boolean get() = context != null
     val history = mutableListOf<String>()
@@ -106,7 +145,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         val currentPath = context?.path
         val paths = (pinnedPaths + listOfNotNull(currentPath)).distinct()
         val labels = shortestUniqueFileLabels(paths)
-        val paused = if (debugPaused) " · paused at ${debugger?.positionText ?: "selected frame"}" else ""
+        val paused = pausedLabel()
         val tabs = pinnedPaths.map { path ->
             ContextTab(path, "${labels.getValue(path)} · pinned" + if (path == currentPath) paused else "", path, path == currentPath)
         }
@@ -164,6 +203,17 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
             }
             override fun breakpointPresentationUpdated(breakpoint: XBreakpoint<*>, session: XDebugSession?) {
                 if (session == debugger?.session) pendingBreakpointUpdates.remove(breakpoint)?.complete(null)
+            }
+        })
+        XDebuggerManager.getInstance(project).debugSessions.forEach { it.addSessionListener(sessionWatcher, this) }
+        project.messageBus.connect(this).subscribe(XDebuggerManager.TOPIC, object : XDebuggerManagerListener {
+            override fun processStarted(debugProcess: XDebugProcess) {
+                debugProcess.session.addSessionListener(sessionWatcher, this@JsConsoleProjectService)
+            }
+            override fun currentSessionChanged(previousSession: XDebugSession?, currentSession: XDebugSession?) {
+                ApplicationManager.getApplication().invokeLater({
+                    if (!disposed && !project.isDisposed) updateContextStatus()
+                }, ModalityState.nonModal())
             }
         })
     }
@@ -231,6 +281,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         val settings = JsConsoleSettings.getInstance()
         if (settings.debugEnabled == enabled && (debugger != null) == enabled) return
         settings.debugEnabled = enabled
+        debuggerFailed = false
         write(if (enabled) "\nDebugger on: restarting runtime; breakpoints stop console calls\n"
             else "\nDebugger off: restarting runtime without the debugger\n")
         restart()
@@ -267,7 +318,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
             val executable = BunRuntimeLocator.locate(selectedBun)
             val script = BootstrapManager.materialize()
             val cwd = Path.of(project.basePath ?: System.getProperty("user.home"))
-            val bridge = if (JsConsoleSettings.getInstance().debugEnabled) {
+            val bridge = if (JsConsoleSettings.getInstance().debugEnabled && !debuggerFailed) {
                 BunDebugBridge(project,
                     { onEdt(epoch) { updateContextStatus() } },
                     { onEdt(epoch) {
@@ -278,7 +329,17 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
             } else null
             val backend = BunConsoleProcess(executable, script, cwd,
                 { text, error -> onEdt(epoch) { write(text, error) } },
-                { reason -> onEdt(epoch) { debugger?.close(); updateStatus("Stopped · $reason"); write("$reason\n", true) } },
+                { reason -> onEdt(epoch) {
+                    debugger?.close()
+                    if (bridge != null && reason.startsWith(DEBUGGER_ATTACH_FAILED)) {
+                        debuggerFailed = true
+                        write("$reason\nContinuing without the debugger; switch Debugger off and on to retry\n", true)
+                        restart()
+                    } else {
+                        updateStatus("Stopped · $reason")
+                        write("$reason\n", true)
+                    }
+                } },
                 bridge?.let { it::attach })
             backend to bridge
         }, background).thenCompose { (backend, bridge) ->
@@ -307,8 +368,10 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         writeEntry(source, OutputKind.JAVASCRIPT, styles)
         write("\n")
         val epoch = generation
-        if (debugPaused) {
-            val result = debugger?.evaluate(source) ?: return
+        val paused = pausedSession()
+        if (paused != null) {
+            val own = debugger?.takeIf { paused === it.session }
+            val result = own?.evaluate(source) ?: PausedFrameEvaluator.evaluateIn(paused, source)
             result.whenComplete { value, error -> onEdt(epoch) {
                 if (error != null) write("[$id] ${message(error)}\n", true)
                 else { write("[$id] "); writeEntry(value, OutputKind.RESULT); write("\n") }

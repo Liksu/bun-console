@@ -67,9 +67,9 @@ class BunConsoleProcess(
                                 endpoint.accept("$line\n")?.let { url ->
                                     try {
                                         debuggerAttach.invoke(url).whenComplete { _, failure ->
-                                            if (failure != null) fail("Debugger could not attach: ${failure.message}")
+                                            if (failure != null) fail("Debugger could not attach: ${failure.message ?: failure}")
                                         }
-                                    } catch (failure: Exception) { fail("Debugger could not attach: ${failure.message}") }
+                                    } catch (failure: Throwable) { fail("Debugger could not attach: ${failure.message ?: failure}") }
                                 }
                                 val delimiter = line.contains("Bun Inspector")
                                 val informational = inspectorBanner || delimiter
@@ -103,6 +103,10 @@ class BunConsoleProcess(
                     while (!closed.get()) {
                         val line = reader.readLine() ?: break
                         val message = JsonParser.parseString(line).asJsonObject
+                        if (message.get("event")?.asString == "output") {
+                            output(message.get("text")?.asString.orEmpty(), message.get("error")?.asBoolean == true)
+                            continue
+                        }
                         val id = message.get("id")?.asLong ?: continue
                         val job = jobs.remove(id) ?: continue
                         if (message.get("ok")?.asBoolean == true) job.complete(message)

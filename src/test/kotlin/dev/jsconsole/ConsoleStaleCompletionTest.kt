@@ -31,6 +31,9 @@ class ConsoleStaleCompletionTest : BasePlatformTestCase() {
             PlatformTestUtil.waitWithEventsDispatching("Initial export not loaded", { "b" in service.contextNames }, 20)
             service.execute("const mine = 7")
             PlatformTestUtil.waitWithEventsDispatching("Console variable not initialized", { output.contains("[1] undefined") }, 20)
+            // Context files run on first use; this one is now loaded, so the runtime keeps its old exports.
+            service.execute("b")
+            PlatformTestUtil.waitWithEventsDispatching("Context file not used", { output.contains("[2] 'old'") }, 20)
             WriteCommandAction.runWriteCommandAction(project) {
                 FileDocumentManager.getInstance().getDocument(file)!!
                     .setText("import { dependent } from './dependency'; export const b = dependent; export const initialText = 'new';")
@@ -69,11 +72,11 @@ class ConsoleStaleCompletionTest : BasePlatformTestCase() {
             assertEquals("initialText", myFixture.editor.document.text)
             service.execute(myFixture.editor.document.text)
             PlatformTestUtil.waitWithEventsDispatching("Fresh export did not evaluate", {
-                output.contains("[2] 'new'")
+                output.contains("[3] 'new'")
             }, 20)
             service.execute("mine")
             PlatformTestUtil.waitWithEventsDispatching("Reload lost console variables", {
-                output.contains("[3] 7")
+                output.contains("[4] 7")
             }, 20)
 
             service.addFile(extraFile)
@@ -91,7 +94,7 @@ class ConsoleStaleCompletionTest : BasePlatformTestCase() {
             }
             service.execute("[extra, another, mine].join(',')")
             PlatformTestUtil.waitWithEventsDispatching("Added file reload lost state", {
-                output.contains("[4] 'new,9,7'")
+                output.contains("[5] 'new,9,7'")
             }, 20)
 
             WriteCommandAction.runWriteCommandAction(project) {

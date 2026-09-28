@@ -1,6 +1,9 @@
 package dev.jsconsole.debug
 
 import com.intellij.openapi.editor.colors.TextAttributesKey
+import com.intellij.openapi.util.Disposer
+import com.intellij.xdebugger.XDebugSession
+import com.intellij.xdebugger.XDebugSessionListener
 import com.intellij.xdebugger.XSourcePosition
 import com.intellij.xdebugger.evaluation.XDebuggerEvaluator
 import com.intellij.xdebugger.frame.XFullValueEvaluator
@@ -13,6 +16,26 @@ import java.util.concurrent.TimeUnit
 import javax.swing.Icon
 
 object PausedFrameEvaluator {
+    /** Evaluate in the selected frame of any suspended session; fails if it resumes, steps or stops first. */
+    fun evaluateIn(session: XDebugSession, source: String): CompletableFuture<String> {
+        val frame = session.currentStackFrame
+        val evaluator = frame?.evaluator
+            ?: return CompletableFuture.failedFuture(IllegalStateException("Select a stack frame with JavaScript evaluation support"))
+        val result = evaluate(evaluator, source, session.currentPosition) {
+            !session.isSuspended || session.currentStackFrame !== frame
+        }
+        val listening = Disposer.newDisposable("JS Console paused evaluation")
+        val obsolete = { result.completeExceptionally(IllegalStateException("Debugger frame changed or resumed")); Unit }
+        session.addSessionListener(object : XDebugSessionListener {
+            override fun beforeSessionResume() = obsolete()
+            override fun sessionResumed() = obsolete()
+            override fun sessionStopped() = obsolete()
+            override fun stackFrameChanged() = obsolete()
+        }, listening)
+        result.whenComplete { _, _ -> Disposer.dispose(listening) }
+        return result
+    }
+
     fun evaluate(evaluator: XDebuggerEvaluator, source: String, position: XSourcePosition?, obsolete: () -> Boolean): CompletableFuture<String> {
         val result = CompletableFuture<String>().orTimeout(15, TimeUnit.SECONDS)
         evaluator.evaluate(source, object : XDebuggerEvaluator.XEvaluationCallback {

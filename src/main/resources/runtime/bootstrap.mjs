@@ -2,7 +2,9 @@ import repl from "node:repl";
 import vm from "node:vm";
 import net from "node:net";
 import { readFileSync } from "node:fs";
-import { PassThrough } from "node:stream";
+import { PassThrough, Writable } from "node:stream";
+import { Console } from "node:console";
+import { StringDecoder } from "node:string_decoder";
 import { inspect } from "node:util";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { pathToFileURL } from "node:url";
@@ -17,6 +19,26 @@ const [major, minor] = (process.versions.bun ?? "0.0").split(".").map(Number);
 if (major < 1 || (major === 1 && minor < 4)) throw new Error("JS Console requires Bun 1.4 or newer");
 delete process.env.JS_CONSOLE_PORT;
 delete process.env.JS_CONSOLE_TOKEN;
+
+// Console output travels on the control socket, so the IDE shows it in order
+// with command results (as in DevTools). Output of child processes that
+// inherit Bun's file descriptors still arrives through the process pipes.
+function sendOutput(text, error) { if (text) send({ event: "output", text, error }); }
+for (const [stream, error] of [[process.stdout, false], [process.stderr, true]]) {
+  const decoder = new StringDecoder("utf8");
+  stream.write = (chunk, encoding, callback) => {
+    if (typeof encoding === "function") { callback = encoding; encoding = undefined; }
+    try {
+      sendOutput(typeof chunk === "string" ? chunk : decoder.write(Buffer.from(chunk)), error);
+    } catch {}
+    if (typeof callback === "function") queueMicrotask(callback);
+    return true;
+  };
+}
+const consoleStream = (error) => new Writable({
+  write(chunk, _, callback) { sendOutput(String(chunk), error); callback(); },
+});
+globalThis.console = new Console({ stdout: consoleStream(false), stderr: consoleStream(true), colorMode: false });
 
 function formatError(error) {
   try {
@@ -210,8 +232,11 @@ function exposeDeclarations(record, declared) {
 
 /** Exports plus exposed declarations. Declarations of a module loaded before they were listed stay hidden. */
 function moduleNames(record) {
-  const names = scanExports(record.path);
   const loaded = !!require.cache[resolve(record.path)];
+  // A loaded module is the truth until it is reloaded; reading it from the cache runs nothing.
+  const names = loaded
+    ? new Set(Object.keys(readModule(record)))
+    : scanExports(record.path);
   const hidden = [];
   for (const name of record.locals ?? []) {
     if (!loaded || record.exposed?.has(name)) names.add(name);

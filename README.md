@@ -4,6 +4,7 @@ A WebStorm plugin project intended to provide a persistent Bun console with
 direct access to the current file's exports and integrated debugging.
 
 Requirements and acceptance criteria: [handout](CODEX_HANDOUT_JS_CONSOLE.md).
+Publishing notes: [marketplace.md](docs/marketplace.md).
 
 Current stage: **console with additional file contexts and experimental Bun debugger integration**.
 Automated checks pass; interactive acceptance in a sandbox IDE is still pending.
@@ -130,6 +131,15 @@ header shows `running…`. If synchronous code occupies Bun's JavaScript thread
 offers Restart Runtime, the only way to stop it. Restart also ends processes
 that console code started. Console code and project modules share one global
 object, so `instanceof Array`, `globalThis` values and classes work across them.
+`console.log` and other output of console code appear in order, before the
+command's result.
+
+When any JavaScript program you are debugging in this project is stopped at a
+breakpoint (for example a Node.js or Bun server started with WebStorm's Debug),
+the console behaves like DevTools on a paused page: input is evaluated in the
+selected stack frame of that session, and the context tab shows
+`paused in <session> at file:line`. Continue/Step in the **⋮** menu control that
+session. After it resumes, input returns to the console's own Bun runtime.
 Top-level `const`, `let` and `class` declarations can be repeated in later
 commands.
 

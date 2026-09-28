@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "dev.jsconsole"
-version = "0.1.20-dev"
+version = "0.2.0"
 
 repositories {
     mavenCentral()
@@ -58,7 +58,9 @@ intellijPlatform {
     buildSearchableOptions = false
     sandboxContainer = layout.buildDirectory.dir("isolated-ide")
     pluginConfiguration {
-        ideaVersion { sinceBuild = "262"; untilBuild = "262.*" }
+        // Open-ended: only the optional debugger uses Experimental API, and it
+        // degrades to console-only mode if that API changes (see docs/marketplace.md).
+        ideaVersion { sinceBuild = "262"; untilBuild = provider { null } }
     }
     pluginVerification {
         failureLevel = VerifyPluginTask.FailureLevel.ALL.filterNot { it == VerifyPluginTask.FailureLevel.EXPERIMENTAL_API_USAGES }

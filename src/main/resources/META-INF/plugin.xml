@@ -1,8 +1,37 @@
 <idea-plugin>
     <id>dev.jsconsole</id>
     <name>JS Console</name>
-    <vendor>JS Console</vendor>
-    <description>Persistent Bun console for the current JavaScript or TypeScript file.</description>
+    <vendor>Petro Borshchahivskyi</vendor>
+    <description><![CDATA[
+<p>A Chrome DevTools–style console for JavaScript and TypeScript projects, running on
+<a href="https://bun.sh">Bun</a>. Try code against your project without leaving WebStorm.</p>
+<ul>
+  <li>The file open in the editor is the console's context: call its functions, classes and
+      variables by name, exported or not, with no imports.</li>
+  <li>Files run only when the console first uses them; switching editor tabs never executes code.</li>
+  <li>Variables persist between commands; <code>const</code>, <code>let</code> and <code>class</code>
+      can be redeclared while you iterate, as in DevTools.</li>
+  <li>Top-level <code>await</code>, <code>import</code> statements, JavaScript highlighting,
+      completion and command history.</li>
+  <li>Pending promises never block the console; uncaught errors are printed, never fatal.</li>
+  <li>Keep extra files in context with <b>Add File to JS Console</b> or <b>Add Symbol to JS Console</b>.</li>
+  <li>Optional debugger: breakpoints stop console calls, and while any JavaScript program you
+      debug is paused, the console evaluates in the selected stack frame.</li>
+</ul>
+<p>Requires Bun 1.4 or newer. Open <b>View | Tool Windows | JS Console</b>.</p>
+]]></description>
+    <change-notes><![CDATA[
+<p>0.2.0</p>
+<ul>
+  <li>Evaluates in the paused frame of any JavaScript program you debug.</li>
+  <li>Console output appears in order with command results.</li>
+  <li>Context files are no longer executed when you switch editor tabs.</li>
+  <li>Non-exported top-level declarations are available by name.</li>
+  <li>Awaited commands no longer block the console; a busy JavaScript thread is reported.</li>
+  <li>Uncaught errors no longer stop the runtime; console and project code share one realm.</li>
+  <li>Debugger toggle in the tool window; Restart also ends processes started from the console.</li>
+</ul>
+]]></change-notes>
     <depends>com.intellij.modules.platform</depends>
     <depends>JavaScript</depends>
     <depends>intellij.javascript.bun</depends>

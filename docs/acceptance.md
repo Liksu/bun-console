@@ -209,6 +209,14 @@ configuration uses `build/isolated-ide`). Open a disposable JS/TS project.
 21. Run `while (true) {}`: after about two seconds the header says JavaScript is
     busy and shows Restart Runtime. Run `Bun.spawn(['bun', '-e', 'setInterval(() => {}, 1000)'])`
     and Restart: the spawned process must exit.
+22. Run `console.log(1); console.error(2); 3`: `1`, `2` (red) and then `[N] 3`
+    appear in this order, every time.
+23. Start a small Node.js or Bun script with WebStorm's own Debug and stop it at a
+    breakpoint. In JS Console (Debugger toggle off), the tab shows
+    `paused in <session> at file:line`; a local variable typed into the console
+    evaluates in that frame. Continue from the ⋮ menu resumes the script; the next
+    input runs in the console's Bun runtime again.
+24. Settings → Plugins shows the JS Console icon, description and vendor.
 
 Do not install into, attach to, restart, or change settings of the user's working
 WebStorm without explicit approval.

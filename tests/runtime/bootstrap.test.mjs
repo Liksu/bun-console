@@ -28,7 +28,9 @@ async function start() {
         while ((end = text.indexOf("\n")) >= 0) {
           const message = JSON.parse(text.slice(0, end));
           text = text.slice(end + 1);
-          if (message.event === "ready") {
+          if (message.event === "output") {
+            stdout += message.text;
+          } else if (message.event === "ready") {
             if (message.token === token) resolve(); else reject(new Error("Bad token"));
           } else {
             const job = jobs.get(message.id);
@@ -344,5 +346,45 @@ test("non-exported top-level declarations listed by the IDE are available withou
   } finally {
     await runtime.stop();
     if (directory.startsWith(tmpdir().replaceAll("\\", "/")) || directory.startsWith(tmpdir())) rmSync(directory, { recursive: true, force: true });
+  }
+}, 15000);
+
+test("console output arrives on the control channel before the command's result", async () => {
+  const token = randomUUID();
+  const listener = net.createServer();
+  await new Promise((resolve) => listener.listen(0, "127.0.0.1", resolve));
+  const events = [];
+  let socket;
+  let text = "";
+  const ready = new Promise((resolve) => listener.on("connection", (connection) => {
+    socket = connection;
+    connection.setEncoding("utf8");
+    connection.on("data", (chunk) => {
+      text += chunk;
+      let end;
+      while ((end = text.indexOf("\n")) >= 0) {
+        const message = JSON.parse(text.slice(0, end));
+        text = text.slice(end + 1);
+        if (message.event === "ready") resolve();
+        else events.push(message);
+      }
+    });
+  }));
+  const child = spawn(Bun.which("bun") ?? Bun.argv[0], [
+    fileURLToPath(new URL("../../src/main/resources/runtime/bootstrap.mjs", import.meta.url)),
+  ], { env: { ...process.env, JS_CONSOLE_PORT: String(listener.address().port), JS_CONSOLE_TOKEN: token }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+  let piped = "";
+  child.stdout.on("data", (chunk) => { piped += chunk; });
+  try {
+    await ready;
+    socket.write(`${JSON.stringify({ id: 1, op: "eval", code: "console.log('first', { n: 1 }); console.error('second'); process.stdout.write('third\\n'); 42" })}\n`);
+    for (let i = 0; i < 200 && !events.some((event) => event.id === 1); i++) await Bun.sleep(10);
+    const order = events.map((event) => event.id === 1 ? `result:${event.text}` : `${event.error ? "err" : "out"}:${event.text}`);
+    expect(order).toEqual(["out:first { n: 1 }\n", "err:second\n", "out:third\n", "result:42"]);
+    expect(piped).toBe("");
+  } finally {
+    socket?.destroy();
+    listener.close();
+    child.kill();
   }
 }, 15000);

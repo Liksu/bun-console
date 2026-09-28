@@ -63,7 +63,11 @@ class BunDebugBridge(
                     }
                 })
                 result.complete(Unit)
-            } catch (error: Exception) { result.completeExceptionally(error); close() }
+            } catch (error: Throwable) {
+                // LinkageError too: the Experimental DAP API may change in a future IDE build.
+                result.completeExceptionally(error)
+                close()
+            }
         }
         return result
     }
