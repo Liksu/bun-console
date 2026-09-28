@@ -8,9 +8,11 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.xdebugger.XDebuggerManager
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 import dev.jsconsole.service.JsConsoleProjectService
+import dev.jsconsole.settings.JsConsoleSettings
 
 class JsConsoleProjectServiceTest : BasePlatformTestCase() {
     fun testCurrentFilePinRestartAndPersistentHistory() {
@@ -18,6 +20,9 @@ class JsConsoleProjectServiceTest : BasePlatformTestCase() {
         val a = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(Files.writeString(directory.resolve("a.ts"), "export function twice(x: number) { return x; }"))!!
         val b = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(Files.writeString(directory.resolve("b.ts"), "export const other = 9;"))!!
         FileEditorManager.getInstance(project).openFile(a, true)
+        val settings = JsConsoleSettings.getInstance()
+        val originalSettings = settings.state
+        settings.debugEnabled = false
         val service = project.getService(JsConsoleProjectService::class.java)
         val output = StringBuilder()
         try {
@@ -31,6 +36,7 @@ class JsConsoleProjectServiceTest : BasePlatformTestCase() {
             service.execute("twice(21)") // Still queues before the deferred save/import.
         }, ModalityState.any())
         awaitOutput(output, "[1] 42")
+        assertTrue(XDebuggerManager.getInstance(project).debugSessions.none { it.sessionName == "JS Console" })
         service.execute("const mine = 7")
         awaitOutput(output, "[2] undefined")
         service.togglePin()
@@ -68,7 +74,7 @@ class JsConsoleProjectServiceTest : BasePlatformTestCase() {
         service.addFile(a)
         PlatformTestUtil.waitWithEventsDispatching("File was not re-added", { service.isFileAdded(a) }, 25)
         assertTrue(service.isFileAdded(a))
-        assertEquals(listOf("b.ts · follows editor", "a.ts · pinned"), service.contextTabs().map { it.label })
+        assertEquals(listOf("a.ts · pinned", "b.ts · follows editor"), service.contextTabs().map { it.label })
         assertTrue(service.contextNames.contains("twice"))
         service.restart()
         service.execute("twice(6)")
@@ -107,6 +113,7 @@ class JsConsoleProjectServiceTest : BasePlatformTestCase() {
         } finally {
             service.stop().get(5, TimeUnit.SECONDS)
             service.dispose()
+            settings.loadState(originalSettings)
             FileEditorManager.getInstance(project).closeFile(a)
             FileEditorManager.getInstance(project).closeFile(b)
             Files.deleteIfExists(directory.resolve("a.ts"))

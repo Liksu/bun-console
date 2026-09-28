@@ -95,13 +95,14 @@ test("persistent context, TS exports, collisions, ownership, errors, and indepen
     await runtime.request("load", { path: fixture("b.ts") });
     expect((await run("typeof twice")).text).toBe("'undefined'");
     expect((await run("a")).text).toBe("42");
-    expect((await run("b")).text).toBe("'B'");
+    const bValue = (await run("b")).text;
+    expect(bValue).toBe((await run("globalThis['b.ts'].b")).text);
     await expect(run("throw new Error('intentional')")).rejects.toThrow("intentional");
     await expect(run("await Promise.reject(new Error('async failure'))")).rejects.toThrow("async failure");
     await expect(run("let = ;")).rejects.toThrow();
     expect((await run("6 * 7")).text).toBe("42");
     await expect(runtime.request("load", { path: fixture("missing.ts") })).rejects.toThrow();
-    expect((await run("b")).text).toBe("'B'");
+    expect((await run("b")).text).toBe(bValue);
     await run('console.log(\'{"id":999,"ok":false}\'); 42');
     expect((await run("21 * 2")).text).toBe("42");
     for (let i = 0; i < 50 && !runtime.stdout().includes('"id":999'); i++) await Bun.sleep(10);

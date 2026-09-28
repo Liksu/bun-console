@@ -1,7 +1,7 @@
 # Console acceptance checks
 
-Target: WebStorm 2026.2.3, Bun 1.4+. Always-on debugging is blocked as documented
-in [debugger-blocker.md](debugger-blocker.md).
+Target: WebStorm 2026.2.3, Bun 1.4+. Always-on debugging uses the approved
+Experimental DAP facade as documented in [debugger-blocker.md](debugger-blocker.md).
 
 ## Automated runtime checks
 
@@ -66,8 +66,20 @@ check automatic collision/default aliases, live bindings, and removal. The IDE
 fixture checks added-file restoration after Restart and that removing the file
 does not remove an independently added symbol.
 
-Plugin Verifier is configured to fail on all reported categories, including
-internal, experimental, deprecated, and override-only API usage.
+Plugin Verifier reports this build Compatible for WebStorm 2026.2.3.
+The 20 explicitly approved Experimental DAP usages are informational;
+internal, deprecated, override-only and other failure categories remain fatal.
+
+## Automated debugger checks
+
+`BunDebuggerTest` checks a regular TypeScript breakpoint, reading frame locals,
+Step Over, Continue and completion of the original console call.
+`BunDebuggerServiceTest` checks that the same console input routes to the paused
+frame and that Restart creates a working new runtime/session.
+`BunDebuggerModuleInitializationTest` checks string-local evaluation, the exact
+TypeScript pause line, and automatic console-runtime restart after editing a file
+with an enabled breakpoint. All run in an isolated headless WebStorm profile and
+require a local Node.js interpreter for the bundled Bun debug adapter.
 
 ## Source inspections still pending
 
@@ -107,9 +119,11 @@ configuration uses `build/isolated-ide`). Open a disposable JS/TS project.
    and run again: the second result and a subsequent `value` query should both
    be `2`. Two `const value` declarations in one command must still fail.
 4. Open a TS file exporting `twice(x: number)`, then call `twice(21)` -> `42`.
-5. Pin file `a.ts`, switch to `b.ts`, and verify both are available while the
-   active tab says `b.ts · follows editor`. Return to `a.ts`, unpin it, and
-   verify it disappears from the pinned context after switching again.
+5. Pin file `a.ts`, switch to `b.ts`, and verify both are available as
+   `[a.ts · pinned] [b.ts · follows editor]` with `b.ts` selected. Return to
+   `a.ts`: its pinned tab should be selected, and there should be no duplicate
+   follows-editor tab. Unpin it and verify it disappears from the pinned context
+   after switching again.
 6. Restart: prior text stays, variables disappear, current/pinned exports return.
 7. Run `while (true) {}` and use Restart; the IDE must remain responsive.
 8. Close the project; its own Bun process and socket should be released.
@@ -130,18 +144,23 @@ configuration uses `build/isolated-ide`). Open a disposable JS/TS project.
     an explicit Bun path; invalid paths must not be saved. Apply while a console
     variable exists: it must remain available until Restart. Reopen settings and
     restart the test IDE to confirm the choice is retained. The toolbar must have
-    no Bun picker button.
+    no Bun picker button. Confirm **Start console with debugger** is off by default:
+    opening/restarting JS Console must create no Debug session, and ordinary
+    evaluation must work. Enable it, Apply, and verify the current runtime is not
+    interrupted; after Restart Runtime, breakpoint support should be active.
 14. Verify the tool window's native **⋮** menu contains the console commands and
     its standard IDE window-management options. Pin File Context must show a
     check mark matching the active state. Run Input is disabled for blank input;
     Ctrl+Enter executes from the input, including with completion open, and does
     not replace shortcuts in ordinary editors. Confirm the selected file/runtime
-    status is visible in the header and that no full-size command buttons remain.
+    status is visible in the header. The compact Run button beside the input
+    should execute on click and display the currently configured shortcut.
 15. From a second TS file's editor or Project-tree menu choose **Add File to JS
     Console**. Its exports should work alongside the current file, and the header
-    should show one native tab per context file (`[b.ts · follows editor] [a.ts · pinned]`), without
-    a combined `+ 1 file` label. Selecting either tab must preserve the same
-    console input, transcript, and runtime. Switch editor tabs and Restart: those exports and
+    should show one native tab per context file (`[a.ts · pinned] [b.ts · follows editor]`), without
+    a combined `+ 1 file` label. Clicking a pinned tab should open its file in
+    the editor and select that tab while preserving the same console input,
+    transcript, and runtime. Switch editor tabs and Restart: those exports and
     completion suggestions should remain. Then choose **Remove File from JS
     Console**; its added names should disappear while the current file and other
     added files remain. A non-exported top-level variable must stay inaccessible.
@@ -153,6 +172,26 @@ configuration uses `build/isolated-ide`). Open a disposable JS/TS project.
     Run `const shared = 42` twice with different values: the short name must
     show the latest console value, while `globalThis['a.ts'].shared` still shows
     the file export.
+
+16. Open JS Console and verify startup leaves JS Console selected rather than
+    switching to Debug. Even if Debug appears briefly during adapter startup, it
+    must be hidden and JS Console must then be shown and activated. With a
+    breakpoint inside `twice`, run `twice(21)`: Debug
+    should activate only when execution pauses. The context tab should show
+    `paused at ...`; `x` and `y` typed into the same input should evaluate to `21`
+    and `42`. Step Over and Continue in the native menu should work, and Continue
+    should finish the original command under its original number. While paused,
+    switch back to JS Console and evaluate another local or expression in the
+    selected frame. Restart while paused should close only this console's process
+    and create a fresh debug-capable runtime. After the console has already loaded
+    a file, add a new breakpoint in that file and immediately call its function:
+    execution should pause there without a manual restart. Bun Inspector startup
+    text should use a neutral console color, while actual errors remain red. Edit
+    a file that has an enabled breakpoint and run its function again: the plugin
+    should automatically restart only the console runtime and pause on the correct
+    source line, never on the module's first line. Finally, stop the Debug session
+    and run another console expression: JS Console and its current Bun runtime
+    should continue without breakpoints. Restart Runtime should reconnect Debug.
 
 Do not install into, attach to, restart, or change settings of the user's working
 WebStorm without explicit approval.

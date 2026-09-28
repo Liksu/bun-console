@@ -5,17 +5,17 @@ direct access to the current file's exports and integrated debugging.
 
 Requirements and acceptance criteria: [handout](CODEX_HANDOUT_JS_CONSOLE.md).
 
-Current stage: **console with additional file contexts built; automated checks pass**.
-Interactive acceptance and separate JVM source inspections are still pending.
+Current stage: **console with additional file contexts and experimental Bun debugger integration**.
+Automated checks pass; interactive acceptance in a sandbox IDE is still pending.
 See [findings](docs/phase-0-findings.md), [acceptance checks](docs/acceptance.md),
-and the [debugger API blocker](docs/debugger-blocker.md).
+and the [debugger integration notes](docs/debugger-blocker.md).
 
 The first experiment, `spikes/bun-repl/probe.mjs`, passed on Bun 1.4.0.
 API investigation continues with `scripts/inspect-bun-api.ps1`.
 
 ## Build and test
 
-Requires Java 25 and Bun 1.4+. The wrapper pins Gradle 9.3.1.
+Requires Java 25, Bun 1.4+, and a local Node.js interpreter for the bundled Bun debug adapter. The wrapper pins Gradle 9.3.1.
 
 ```powershell
 $env:JAVA_HOME = 'C:\path\to\WebStorm\jbr'
@@ -39,16 +39,16 @@ can instead choose Enter to run and Shift+Enter to add a newline. The selected
 mode takes effect in open consoles immediately; when Enter runs, Ctrl+Enter is
 disabled for that console. A completion popup retains its normal Enter behavior.
 Up/Down at the first/last visual line (or Alt+Up/Down) browse history.
+A compact **Run** button beside the input shows the current execution shortcut.
 Commands live in the tool window's native **⋮** menu: Run Input, Restart Runtime,
 Clear Output, Pin File Context, and JS Console Settings. Pin is a checked menu
-item. The file following the editor and each pinned file appear as native tabs in the
-window header, for example `[b.ts · follows editor] [a.ts · pinned]`;
-pinning the following file adds `· pinned` to its existing tab. If basenames
-match, each matching tab expands to the shortest unique `folder/file` path.
-Selecting any tab keeps
-the same console input, transcript, and Bun session. Runtime startup and errors
-are reported in the transcript. There is
-no separate button row or large Run button. The run shortcut can be changed under
+item. Every context file has one native tab: pinned files come first, and an
+unpinned file following the editor is appended last. The active file's tab is
+selected; returning to a pinned file selects its existing tab without a second
+`follows editor` tab. If basenames match, each matching tab expands to the
+shortest unique `folder/file` path. Selecting any tab keeps the same console
+input, transcript, and Bun session. Runtime startup and errors are reported in
+the transcript. The run shortcut can be changed under
 Settings → Keymap → Run JS Console Input and is active only inside this console.
 Down past the newest command restores the unfinished draft. When completion is
 open, arrows navigate its suggestions. Input uses the IDE editor font, and
@@ -72,8 +72,12 @@ Suggestions for other project-file exports are hidden in the console input,
 because WebStorm would insert an `import` that the running REPL cannot execute.
 If a context file changes after it was loaded, switching to the console input
 quietly saves and reimports that file. Its new exports become available without
-resetting console variables. If a loaded dependency changes, the header shows a
-native **Restart Runtime** action, since reimporting only the parent file would
+resetting console variables. When the edited file has an enabled breakpoint,
+the console instead restarts only its Bun runtime before the next command so the
+breakpoint stays bound to Bun's newly compiled TypeScript. The transcript,
+history, input and file contexts remain; runtime variables reset. If a loaded
+dependency changes, the header shows a native **Restart Runtime** action, since
+reimporting only the parent file would
 leave that dependency cached. A failed reimport also offers Restart. Changes are
 applied when you return to the console, not on every keystroke in the source file.
 The current saved JS/TS file's named exports become available by name. Pin keeps
@@ -112,8 +116,10 @@ in scope; starting Bun with `--inspect` alone does not add them to the REPL.
 Choose Bun under **Settings → Tools → JS Console**. Automatic detection searches
 PATH, then `~/.bun/bin`; disable it to browse for an executable or enter an absolute
 path. The choice is saved in this IDE's local settings for all projects and is not
-synced to other computers. Applying settings keeps the current console running;
-use **⋮ → Restart Runtime** when ready to switch runtimes. Bun 1.4+ is required.
+synced to other computers. The same page selects **Console only** (the default)
+or **Console + debugger**. Applying either runtime setting keeps the current
+console running; use **⋮ → Restart Runtime** when ready to apply it. Bun 1.4+ is
+required.
 Static imports support default, named/aliased, namespace and side-effect forms:
 
 ```javascript
@@ -133,8 +139,18 @@ not yet supported; dynamic `import()` expressions keep the backend's behavior.
 
 Reading WebStorm's own Bun setting is blocked by its internal service API; the
 JS Console setting is separate. A missing runtime error points to the settings page.
-Imports execute normal module top-level code. This version provides a console;
-it does not yet attach a debugger or expose non-exported declarations.
+Imports execute normal module top-level code. When **Start console with debugger**
+is enabled, this version attaches WebStorm's Bun debugger to the console process.
+Non-exported declarations are available
+only in a paused stack frame where JavaScript scope exposes them; they are not
+automatically added to the console's top-level context. The debugger initializes
+in the background: after its temporary Debug window is hidden, JS Console is
+shown and activated explicitly; WebStorm opens Debug again when execution stops
+at a breakpoint. While paused, you can switch back to JS
+Console and evaluate expressions against the selected stack frame. Stopping the
+Debug session detaches only the debugger: the console and its Bun runtime remain
+available without breakpoints. **Restart Runtime** reconnects the debugger.
+In the default console-only mode no Inspector or DAP session is created.
 
 Independent Bun processes, builds, offline inspection, network research, and
 isolated test IDEs are authorized. Ask before changing the user's working IDE,

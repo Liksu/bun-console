@@ -13,7 +13,11 @@ import java.util.concurrent.CopyOnWriteArrayList
 @Service(Service.Level.APP)
 @State(name = "dev.jsconsole.settings", storages = [Storage(value = "js-console.xml", roamingType = RoamingType.DISABLED)])
 class JsConsoleSettings : PersistentStateComponent<JsConsoleSettings.Options> {
-    data class Options(var bunPath: String = "", var enterRuns: Boolean = false)
+    data class Options(
+        var bunPath: String = "",
+        var enterRuns: Boolean = false,
+        var debugEnabled: Boolean = false,
+    )
 
     @Volatile private var options = Options()
     private val enterModeListeners = CopyOnWriteArrayList<() -> Unit>()
@@ -33,6 +37,9 @@ class JsConsoleSettings : PersistentStateComponent<JsConsoleSettings.Options> {
             options = options.copy(enterRuns = value)
             enterModeListeners.forEach { it() }
         }
+    var debugEnabled: Boolean
+        get() = options.debugEnabled
+        set(value) { options = options.copy(debugEnabled = value) }
 
     fun onEnterModeChanged(parent: Disposable, listener: () -> Unit) {
         enterModeListeners.add(listener)

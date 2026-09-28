@@ -1,63 +1,81 @@
-# Always-on debugger: current blocker
+# Bun debugger integration
 
-Target inspected: WebStorm 2026.2.3 / WS-262.10968.77.
+Target: WebStorm 2026.2.3 (WS-262.10968.77), Bun 1.4.0.
 
-No supported Bun launch route has been established. The console-only milestone
-does not attach a debugger; WebStorm breakpoints will not stop its Bun process.
+When **Start console with debugger** is enabled, the console starts Bun with
+`--inspect-wait` and attaches WebStorm's bundled Bun debug adapter before the
+bootstrap executes. Breakpoints in TypeScript
+modules stop normal console calls. While stopped, input is evaluated through the
+selected `XStackFrame` evaluator; Continue returns subsequent input to the Bun
+REPL. Restart closes this console's process/session and creates both again.
+Stopping the Debug session detaches only the debugger; the existing Bun REPL
+continues without breakpoints until Restart reconnects a new debug session.
+The session has a native Debug tab for breakpoint and frame state, but initialization
+returns focus to JS Console and keeps Debug out of the way until a breakpoint
+pauses execution. Continue and stepping are also available in the console menu
+while paused, and the active context tab shows the pause location. You can switch
+back to JS Console while paused and evaluate expressions in the selected frame.
 
-## Evidence from the installed artifacts
+This uses the public **Experimental** `com.intellij.platform.dap` facade. The
+user explicitly approved that bounded exception on 2026-09-27. The integration
+uses `DebugAdapterSupportProvider`, `DapProcessStarter`, `DapLaunchArgumentsProvider`
+and `XDebugSession`, with no reflection, Internal Bun configuration classes,
+custom protocol implementation or changes to the user's IDE. WebStorm's Bun
+adapter uses a DAP `attach` request with the inspector URL. It runs under a local
+Node.js interpreter configured in WebStorm.
 
-- `com.intellij.javascript.bun.runConfiguration.run.BunRunConfiguration` and
-  `BunRunConfigurationType` look public in JVM signatures, but are **Kotlin internal**.
-  Compiling `spikes/jetbrains-api/BunApiProbe.kt` with Kotlin 2.4.0 rejects access
-  with `Cannot access ... it is internal in file`. This is a negative feasibility
-  check, not a failure in normal plugin sources. No visibility suppression is used.
-- `BunRunConfigurationOptions` also has internal visibility in its Kotlin
-  metadata; it is not used by the plugin.
-- `com.intellij.javascript.bun.settings.BunSettingsService` is explicitly annotated
-  `@ApiStatus.Internal`. Its companion's `getConfiguredPath(Project)` is therefore
-  not a permissible workaround. The console uses executable selection/PATH instead.
-- Follow-up on 2026-09-24: the generic
-  `com.intellij.javascript.runtime.JSRuntimeProvider` interface in
-  `intellij.javascript.backend.jar` is also explicitly `@ApiStatus.Internal`.
-  It is not a supported facade for bypassing the Bun-specific service restriction.
-  The inspected signature is in `build/phase-0/api/JSRuntimeProvider.txt`.
-- `com.intellij.javascript.bun.BunDebugAdapterSupportProvider` is package-private
-  at JVM level. Its implementation is not a callable public API for our plugin.
-- The installed `intellij.javascript.debugger.dap.launcher` module contains one
-  implementation class, `LauncherKt`. Its public function is
-  `NodeJsBasedDebugAdapter(Project, String, List<String>, Map<String,String>, Integer)`.
-  It returns a `DebugAdapterHandle` for a Node-hosted adapter. It is not a complete
-  Bun run/session factory. Calling it alone does not establish a supported path
-  for Bun launch configuration, process/session association, and breakpoint wiring.
+## Why the exception was needed
 
-Using the generic run-configuration registry does not by itself solve supplying
-the Bun program/runtime parameters through supported typed APIs. Undocumented
-serialization fields have not been adopted as a replacement for the internal
-configuration API. This finding is scoped to the paths investigated; it is not a
-claim that no public integration could ever exist.
+Both `BunRunConfiguration` and `BunAttachConfiguration` are Kotlin `internal`.
+`BunSettingsService` and `JSRuntimeProvider` carry `@ApiStatus.Internal`. The
+negative Kotlin probe at `spikes/jetbrains-api/BunApiProbe.kt` verifies that the
+configuration classes are unavailable to third-party Kotlin code. The generic
+DAP facade is public but Experimental in the installed 262 build; no stable Bun
+launch/attach API was found. The exception is limited to the debugger package,
+and the plugin remains pinned to the 262 build range.
 
-## Upstream API request
+## Verified behavior
 
-Expose a stable Bun run/attach configuration interface or factory that accepts:
+`BunDebuggerTest` covers a regular WebStorm breakpoint in a TypeScript function,
+local evaluation, Step Over, Continue and completion of the original REPL request.
+`BunDebuggerServiceTest` covers the same console input routing, pause label,
+restart during a pause, evaluation in the new runtime, and continued console
+evaluation after the Debug session is stopped. `BunLateBreakpointTest`
+adds a breakpoint after the console has loaded a TypeScript module and immediately
+executes its function. The console waits for WebStorm's breakpoint presentation,
+then reloads that module through its normal context-refresh path before running
+the command. This handles a Bun adapter limitation with breakpoints added to an
+already loaded source. Reloading re-executes top-level code in that file; the REPL
+bindings remain intact. All tests use an isolated headless WebStorm profile. No
+debugger was attached to the user's working IDE.
 
-- the Bun executable (or a public runtime selection service);
-- bootstrap path, working directory, arguments, and environment;
-- Debug executor launch without forcing the Debug tool window to the foreground;
-- a supported way to identify the resulting process and `XDebugSession`.
+BunDebuggerModuleInitializationTest covers string locals and a TypeScript module
+whose breakpoint exists before startup. After that file is edited, the console
+automatically restarts its own runtime before the next command, stops at the
+correct source line and exposes the updated local value. This restart is needed
+because Bun invalidates the adapter's breakpoint binding when it recompiles the
+module. It preserves the transcript, history, input and context-file selection,
+while ordinary runtime variables reset.
 
-Then the console can delegate breakpoints, stepping, and source maps to JetBrains,
-and route paused evaluations through public `XStackFrame.getEvaluator()`.
+Plugin Verifier reports 20 Experimental API usages and Compatible for this
+WebStorm build. The Gradle verification task treats only that approved category
+as non-fatal; all other verification failure levels remain enabled.
 
-## Reproduce the visibility check
+`showToolWindowOnSuspendOnly(true)` cannot be used with Bun `--inspect-wait` in
+this build: it defers adapter initialization until pause, while Bun waits for
+the adapter to connect before executing. We initialize the session with
+`showTab(true)` and `showToolWindowOnSuspendOnly(false)` so the adapter connects
+and WebStorm owns the Debug tab's lifetime. When the runtime handshake completes,
+the plugin hides Debug if it was not already visible and restores JS Console if
+startup stole focus; `sessionPaused` activates Debug when a breakpoint is hit.
+Recheck this workaround when upgrading WebStorm.
 
-First run `scripts/inspect-bun-api.ps1` to place a read-only copy of the Bun JAR
-under `build/phase-0/api/`. Then:
+Debugger mode is optional and disabled by default. Console-only mode starts the
+same Bun bootstrap without `--inspect-wait`, does not instantiate `BunDebugBridge`
+and does not create a DAP/XDebugger session. Changing the setting affects the next
+Restart Runtime. In debugger mode the hide callback explicitly shows and activates
+JS Console, so the temporary Debug activation cannot leave both windows hidden.
 
-```powershell
-.\gradlew.bat -PwebstormPath="C:\path\to\WebStorm" -PapiAudit=true compileKotlin
-```
-
-This command is expected to fail. Normal builds omit `-PapiAudit=true` and never
-include the probe or the copied Bun JAR. Detailed local output is saved in
-`build/phase-0/api/kotlin-accessibility.txt`.
+The installed Live Edit plugin has an incomplete headless test fixture; the
+Gradle test task disables Live Edit only in `build/isolated-ide/.../config-test`.
+It does not alter any normal WebStorm profile.

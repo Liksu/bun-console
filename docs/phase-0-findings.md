@@ -1,9 +1,9 @@
 # Phase 0 — engineering log
 
-Status: IN PROGRESS. Bun probes and the plugin build have run. Offline API
-inspection found the debugger blocker documented in `debugger-blocker.md`.
-The final automated run passed. Interactive acceptance and separate JVM source
-inspections remain pending; phases are not declared fully accepted yet.
+Status: IN PROGRESS. The console and Experimental DAP debugger integration
+pass isolated automated tests. The earlier API blocker and its bounded exception
+are documented in `debugger-blocker.md`. Interactive sandbox acceptance remains
+pending; phases are not declared fully accepted yet.
 
 Current authorization: independent processes, isolated tests/builds/IDEs, and
 network research are allowed without another question. Ask before an action that
@@ -512,3 +512,115 @@ its key listener competed with the IDE editor action system.
 - [Bun REPL](https://bun.sh/docs/runtime/repl): native REPL features do not prove `node:repl` compatibility.
 - [Chrome DevTools 92](https://developer.chrome.com/blog/new-in-devtools-92): console `const` redeclaration across separate inputs, with duplicates in one input still invalid.
 - [Node REPL API](https://nodejs.org/api/repl.html): reference for the stream-backed context and `handleError`; the tested subset passes on Bun 1.4.0.
+
+## Debugger API follow-up (2026-09-26)
+
+- Expanded the offline audit to Bun Attach, its configuration producer, and the
+  platform DAP facade. The Kotlin negative probe confirms Attach is internal,
+  just like Run; ordinary plugin sources still contain no debugger dependencies.
+- Found a promising public DAP route using the registered Bun adapter, but all
+  required facade types are `@ApiStatus.Experimental`. In accordance with the
+  handout, stopped before integrating it and documented a bounded exception,
+  implementation plan and isolated acceptance checks in `debugger-blocker.md`.
+- The standard producer is a conditional alternative requiring Bun as the
+  project's preferred runtime and depending on the run template. It remains
+  unproven; no user IDE settings were changed to force it.
+- This is an API investigation, not a completed debugger milestone. Runtime
+  behavior and the 0.1.15-dev version remain unchanged.
+
+## Experimental Bun debugger integration (2026-09-27)
+
+- User approved the bounded Experimental DAP API exception. The plugin attaches
+  WebStorm's bundled Bun adapter to its own `--inspect-wait` process. A DAP
+  `Attach` request is required for an existing inspector URL; `Launch` expects
+  a program and terminates instead.
+- The DAP session has a native Debug tab and uses an isolated test profile; it
+  does not attach to the user's active IDE. Paused input goes to the selected stack-frame evaluator; commands
+  run after Continue return to the Bun REPL. Restart recreates process/session.
+- Isolated platform tests cover TypeScript breakpoint, local arguments, Step
+  Over, Continue, console routing and restart during pause.
+- The bundled adapter requires a local Node interpreter. The Gradle headless
+  test profile disables only its incomplete Live Edit fixture.
+
+## Debugger milestone validation: 0.1.16-dev (2026-09-27)
+
+- `test buildPlugin verifyPlugin`: **BUILD SUCCESSFUL**, 19 JVM/platform tests.
+  Plugin Verifier: **Compatible** with WebStorm 2026.2.3; 20 usages of the
+  approved Experimental DAP facade, with all other failure levels enforced.
+- 7 Bun runtime tests passed. `git diff --check` passed.
+- Archive: `build/distributions/js-console-0.1.16-dev.zip` (166,703 bytes),
+  SHA-256 `DF1838C738A7DC652D223970892645A05DE2AD6F9CC45917DE4FB939D25F8138`.
+- No installation or manual run in the user's working IDE was performed.
+
+## UI and late-breakpoint validation: 0.1.17-dev (2026-09-27)
+
+- A compact Run button beside the input displays the current shortcut. Native
+  context tabs list pinned files first and an unpinned file following the editor
+  last; an active pinned file has just one selected tab. Clicking a pinned tab
+  opens that file in the editor. The Bun Inspector banner uses neutral console
+  output rather than error red.
+- A breakpoint added after its TypeScript file has loaded now gates the next
+  evaluation until WebStorm's breakpoint presentation is updated (with a bounded
+  fallback), then reloads the module through the existing context refresh path.
+  This can re-run top-level module side effects, but preserves REPL bindings.
+- `test buildPlugin verifyPlugin`: **BUILD SUCCESSFUL**, 20 JVM/platform tests.
+  Plugin Verifier: **Compatible** with WebStorm 2026.2.3; 20 usages of the
+  approved Experimental DAP facade. 7 Bun runtime tests passed.
+- Archive: `build/distributions/js-console-0.1.17-dev.zip`. No installation or
+  manual run in the user's working IDE was performed.
+
+## Background debugger and reload synchronization: 0.1.18-dev (2026-09-27)
+
+- The DAP session still starts immediately because suspend-only initialization
+  deadlocks Bun `--inspect-wait`, but Debug is hidden after the runtime handshake
+  and JS Console regains focus. Debug activates when a breakpoint pauses. Input
+  in JS Console remains available for selected-frame evaluation while paused.
+- Editing a current or pinned file with an enabled JavaScript breakpoint restarts
+  only the console's Bun runtime before the next command. This avoids Bun's stale
+  breakpoint binding after TypeScript recompilation and preserves transcript,
+  history, input and file-context selection. Runtime variables reset.
+- `BunDebuggerModuleInitializationTest` covers the reported multiline module,
+  exact `b.ts:9` pause, string-local evaluation, file edit, automatic restart and
+  a second pause with the updated value.
+- `test buildPlugin verifyPlugin`: **BUILD SUCCESSFUL**, 21 JVM/platform tests.
+  Plugin Verifier: **Compatible** with WebStorm 2026.2.3; 20 usages of the
+  approved Experimental DAP facade. 7 Bun runtime tests passed.
+- Archive: `build/distributions/js-console-0.1.18-dev.zip` (175,475 bytes),
+  SHA-256 `97588A06D492A433BB6F137416A189CAED642B24D2E19AF7E7E58226A7EB3FCA`.
+- `git diff --check` passed. No installation, attach, restart or manual run in
+  the user's working WebStorm was performed.
+
+## Independent console lifetime: 0.1.19-dev (2026-09-28)
+
+- Stopping WebStorm's Debug session no longer closes the JS Console Bun process.
+  The console continues evaluating commands without breakpoints and tells the
+  user that Restart Runtime will reconnect the debugger.
+- `BunDebuggerServiceTest` now stops the Debug session and verifies that the same
+  console runtime still evaluates the next command.
+- `test buildPlugin verifyPlugin`: **BUILD SUCCESSFUL**, 21 JVM/platform tests.
+  Plugin Verifier: **Compatible** with WebStorm 2026.2.3; the approved 20
+  Experimental DAP usages are unchanged. 7 Bun runtime tests passed.
+- Archive: `build/distributions/js-console-0.1.19-dev.zip` (175,523 bytes),
+  SHA-256 `9337BEAA7D760F55298AE0CA027E0F1E3EFF654B36D3378FA838B24A0DD1836B`.
+- No installation, attach, restart or manual run in the user's working WebStorm
+  was performed.
+
+## Optional debugger mode: 0.1.20-dev (2026-09-28)
+
+- Settings → Tools → JS Console now has **Start console with debugger**, disabled
+  by default. Console-only mode launches the Bun bootstrap directly, without
+  Inspector flags, `BunDebugBridge`, DAP or an XDebugger session.
+- Enabling the option applies on the next Restart Runtime and preserves the
+  existing debugger behavior. Runtime settings never interrupt the current
+  console when Apply is pressed.
+- In debugger mode, the Debug hide callback now explicitly shows and activates
+  JS Console. This serializes the two tool-window operations and prevents Debug
+  from hiding after an earlier console activation request.
+- Settings, console-only service and debugger integration tests cover both paths.
+- `test buildPlugin verifyPlugin`: **BUILD SUCCESSFUL**, 21 JVM/platform tests.
+  Plugin Verifier: **Compatible** with WebStorm 2026.2.3; the approved 20
+  Experimental DAP usages are unchanged. 7 Bun runtime tests passed.
+- Archive: `build/distributions/js-console-0.1.20-dev.zip` (176,398 bytes),
+  SHA-256 `DE382EF46874012BFD5F6CFDE6F5B900D52E295B793BF2FF7390BE7D9251507A`.
+- No installation, attach, restart or manual run in the user's working WebStorm
+  was performed.

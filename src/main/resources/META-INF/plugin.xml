@@ -5,7 +5,10 @@
     <description>Persistent Bun console for the current JavaScript or TypeScript file.</description>
     <depends>com.intellij.modules.platform</depends>
     <depends>JavaScript</depends>
+    <depends>intellij.javascript.bun</depends>
+    <dependencies><module name="intellij.platform.dap"/></dependencies>
     <extensions defaultExtensionNs="com.intellij">
+        <platform.dap.launchArgumentsProvider implementation="dev.jsconsole.debug.ConsoleDapArgumentsProvider"/>
         <applicationConfigurable parentId="tools" id="dev.jsconsole.settings" displayName="JS Console"
                                  instance="dev.jsconsole.settings.JsConsoleConfigurable"/>
         <completion.contributor language="JavaScript" order="first"

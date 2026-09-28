@@ -11,6 +11,8 @@ import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.DumbAwareAction
+import com.intellij.openapi.editor.event.DocumentEvent
+import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.fileTypes.LanguageFileType
 import com.intellij.openapi.project.Project
@@ -29,11 +31,13 @@ import java.awt.event.KeyEvent
 import java.awt.event.FocusAdapter
 import java.awt.event.FocusEvent
 import javax.swing.AbstractAction
+import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.KeyStroke
 import javax.swing.SwingUtilities
+import javax.swing.UIManager
 
 class JsConsolePanel(private val project: Project, statusChanged: (String) -> Unit = {}) : JPanel(BorderLayout()), Disposable {
     private val service = project.getService(JsConsoleProjectService::class.java)
@@ -45,6 +49,8 @@ class JsConsolePanel(private val project: Project, statusChanged: (String) -> Un
     private var draft = ""
     private var disposed = false
     private var runShortcutRegistered = false
+    private val runButton = JButton("Run").apply { isEnabled = false; addActionListener { execute() } }
+    private val runHint = JLabel()
 
     private fun command(text: String, description: String, enabled: () -> Boolean = { true }, perform: () -> Unit) =
         object : DumbAwareAction(text, description, null) {
@@ -57,6 +63,16 @@ class JsConsolePanel(private val project: Project, statusChanged: (String) -> Un
             }
         }
 
+    private fun debugCommand(text: String, perform: () -> Unit) = object : DumbAwareAction(text) {
+        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+        override fun update(event: AnActionEvent) {
+            event.presentation.isVisible = !disposed && !project.isDisposed && service.debugPaused
+        }
+        override fun actionPerformed(event: AnActionEvent) {
+            if (service.debugPaused) perform()
+        }
+    }
+
     private val runInput = command("Run Input", "Execute the console input", { input.text.isNotBlank() }) { execute() }
     private val noShortcut = command("", "") {}
     val menuActions = DefaultActionGroup().apply {
@@ -64,6 +80,11 @@ class JsConsolePanel(private val project: Project, statusChanged: (String) -> Un
         addSeparator()
         add(command("Restart Runtime", "Start a fresh Bun runtime; reset console variables") { service.restart() })
         add(command("Clear Output", "Clear output; keep variables, input and command history") { service.clearOutput() })
+        addSeparator()
+        add(debugCommand("Continue") { service.resume() })
+        add(debugCommand("Step Over") { service.stepOver() })
+        add(debugCommand("Step Into") { service.stepInto() })
+        add(debugCommand("Step Out") { service.stepOut() })
         add(object : ToggleAction("Pin File Context", "Keep the current file context when switching editors", null), DumbAware {
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
             override fun update(event: AnActionEvent) {
@@ -93,6 +114,19 @@ class JsConsolePanel(private val project: Project, statusChanged: (String) -> Un
         input.preferredSize = Dimension(500, 100)
         entry.add(JLabel("  >  "), BorderLayout.WEST)
         entry.add(input, BorderLayout.CENTER)
+        val runControl = JPanel(BorderLayout()).apply {
+            add(runButton, BorderLayout.CENTER)
+            add(runHint, BorderLayout.SOUTH)
+        }
+        runHint.horizontalAlignment = JLabel.CENTER
+        runHint.font = runHint.font.deriveFont((runHint.font.size2D - 2f).coerceAtLeast(9f))
+        runHint.foreground = UIManager.getColor("Label.disabledForeground")
+        entry.add(runControl, BorderLayout.EAST)
+        input.document.addDocumentListener(object : DocumentListener {
+            override fun documentChanged(event: DocumentEvent) {
+                runButton.isEnabled = !disposed && input.text.isNotBlank()
+            }
+        }, this)
         val splitter = JBSplitter(true, 0.75f)
         splitter.setFirstComponent(output.component)
         splitter.setSecondComponent(entry)
@@ -140,8 +174,10 @@ class JsConsolePanel(private val project: Project, statusChanged: (String) -> Un
             runShortcutRegistered = false
         }
         if (JsConsoleSettings.getInstance().enterRuns) {
+            runHint.text = "Enter"
             runInput.copyShortcutFrom(noShortcut)
         } else {
+            runHint.text = "Ctrl+Enter"
             runInput.copyShortcutFrom(ActionManager.getInstance().getAction("dev.jsconsole.RunInput"))
             runInput.registerCustomShortcutSet(this, this)
             runShortcutRegistered = true

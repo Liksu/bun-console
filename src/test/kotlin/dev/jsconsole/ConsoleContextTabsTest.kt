@@ -29,23 +29,24 @@ class ConsoleContextTabsTest : BasePlatformTestCase() {
             anchor = ToolWindowAnchor.BOTTOM
             canCloseContent = false
         }
+        var console: dev.jsconsole.ui.JsConsolePanel? = null
         try {
             JsConsoleToolWindowFactory().createToolWindowContent(project, toolWindow)
             val manager = toolWindow.contentManager
             assertEquals(1, manager.contents.size)
             val mainContainer = manager.contents.single().component as JPanel
-            val console = mainContainer.components.single()
+            console = mainContainer.components.single() as dev.jsconsole.ui.JsConsolePanel
             service.addFile(file)
             PlatformTestUtil.waitWithEventsDispatching("Missing file tab", { manager.contents.size == 2 }, 25)
-            assertEquals(listOf("JavaScript · follows editor", "a.ts · pinned"), manager.contents.map { it.displayName })
+            assertEquals(listOf("a.ts · pinned", "JavaScript · follows editor"), manager.contents.map { it.displayName })
             service.addFile(secondFile)
             PlatformTestUtil.waitWithEventsDispatching("Missing second file tab", { manager.contents.size == 3 }, 25)
-            assertEquals(listOf("JavaScript · follows editor", "a.ts · pinned", "b.ts · pinned"), manager.contents.map { it.displayName })
+            assertEquals(listOf("a.ts · pinned", "b.ts · pinned", "JavaScript · follows editor"), manager.contents.map { it.displayName })
             manager.setSelectedContent(manager.contents[2])
             assertSame(console, (manager.contents[2].component as JPanel).components.single())
             service.removeFile(file)
             PlatformTestUtil.waitWithEventsDispatching("File tab was not removed", { manager.contents.size == 2 }, 25)
-            assertEquals(listOf("JavaScript · follows editor", "b.ts · pinned"), manager.contents.map { it.displayName })
+            assertEquals(listOf("b.ts · pinned", "JavaScript · follows editor"), manager.contents.map { it.displayName })
             assertSame(console, (manager.contents[1].component as JPanel).components.single())
             service.removeFile(secondFile)
             PlatformTestUtil.waitWithEventsDispatching("Second tab was not removed", { manager.contents.size == 1 }, 25)
@@ -53,11 +54,26 @@ class ConsoleContextTabsTest : BasePlatformTestCase() {
             service.addFile(file)
             service.addFile(sameName)
             PlatformTestUtil.waitWithEventsDispatching("Matching file tabs were not added", { manager.contents.size == 3 }, 25)
-            assertEquals(listOf("JavaScript · follows editor", "${directory.fileName}/a.ts · pinned", "nested/a.ts · pinned"),
+            assertEquals(listOf("${directory.fileName}/a.ts · pinned", "nested/a.ts · pinned", "JavaScript · follows editor"),
                 manager.contents.map { it.displayName })
+            com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(file, true)
+            PlatformTestUtil.waitWithEventsDispatching("Pinned file not selected", { manager.selectedContent == manager.contents[0] }, 25)
+            assertEquals(2, manager.contents.size)
+            assertEquals(listOf("${directory.fileName}/a.ts · pinned", "nested/a.ts · pinned"), manager.contents.map { it.displayName })
+            com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(secondFile, true)
+            PlatformTestUtil.waitWithEventsDispatching("Following file not appended", { manager.contents.size == 3 && manager.selectedContent == manager.contents[2] }, 25)
+            assertEquals("b.ts · follows editor", manager.contents[2].displayName)
+            manager.setSelectedContent(manager.contents[0])
+            PlatformTestUtil.waitWithEventsDispatching("Pinned tab did not open its file", {
+                com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).selectedFiles.firstOrNull() == file &&
+                    manager.contents.size == 2 && manager.selectedContent == manager.contents[0]
+            }, 25)
         } finally {
             service.stop().get(5, TimeUnit.SECONDS)
             service.dispose()
+            console?.let { com.intellij.openapi.util.Disposer.dispose(it) }
+            com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).closeFile(file)
+            com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).closeFile(secondFile)
             toolWindow.contentManager.removeAllContents(true)
             Files.deleteIfExists(directory.resolve("a.ts"))
             Files.deleteIfExists(directory.resolve("b.ts"))

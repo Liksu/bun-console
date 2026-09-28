@@ -1,5 +1,10 @@
-export const b = "B";
+export const b = "ABC";
 
 export const initialText = `Яду мне яду. Или айда на море.
 Там солёное яйцо, сладкий йогурт и любимый ядрёный южный маракуй.
 Там же йог, ёлки-палки, и ювелирный. Лёгкий загар пройдет, но гадкий ожог надо будет ещё обдирать.`
+
+export function test(foo: string): string {
+    if (!foo) return ''
+    return foo.split('').reverse().join('')
+}

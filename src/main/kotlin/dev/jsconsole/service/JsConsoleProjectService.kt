@@ -13,9 +13,16 @@ import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.xdebugger.XDebugSession
+import com.intellij.xdebugger.XDebuggerManager
+import com.intellij.xdebugger.breakpoints.XBreakpoint
+import com.intellij.xdebugger.breakpoints.XBreakpointListener
+import com.intellij.xdebugger.breakpoints.XLineBreakpoint
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.google.gson.JsonObject
+import dev.jsconsole.debug.BunDebugBridge
 import dev.jsconsole.runtime.BunConsoleProcess
 import dev.jsconsole.runtime.BunRuntimeLocator
 import dev.jsconsole.runtime.BootstrapManager
@@ -25,6 +32,8 @@ import dev.jsconsole.ui.ConsoleStyle
 import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionException
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.Executors
 
 @Service(Service.Level.PROJECT)
@@ -38,6 +47,12 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
     private var generation = 0L
     private var command = 0L
     private var runtime: BunConsoleProcess? = null
+    private var debugger: BunDebugBridge? = null
+    val debugPaused: Boolean get() = debugger?.paused == true
+    fun resume() { debugger?.session?.takeIf { debugPaused }?.resume() }
+    fun stepOver() { debugger?.session?.takeIf { debugPaused }?.stepOver(false) }
+    fun stepInto() { debugger?.session?.takeIf { debugPaused }?.stepInto() }
+    fun stepOut() { debugger?.session?.takeIf { debugPaused }?.stepOut() }
     private var ready: CompletableFuture<BunConsoleProcess>? = null
     private var contextReady: CompletableFuture<BunConsoleProcess>? = null
     private var context: VirtualFile? = null
@@ -50,7 +65,9 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
     private val stalePaths = mutableSetOf<String>()
     private val restartPaths = mutableSetOf<String>()
     private val modifiedVersions = mutableMapOf<String, Long>()
+    private val editedPaths = mutableSetOf<String>()
     private val knownContextPaths = mutableSetOf<String>()
+    private val pendingBreakpointUpdates = ConcurrentHashMap<XBreakpoint<*>, CompletableFuture<Void>>()
     private var editVersion = 0L
     private var refreshing = false
     @Volatile private var addedFilePaths: Set<String> = emptySet()
@@ -66,17 +83,22 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         private set
     val restartRequired: Boolean get() = restartPaths.isNotEmpty()
 
-    data class ContextTab(val key: String, val label: String, val path: String?)
+    data class ContextTab(val key: String, val label: String, val path: String?, val active: Boolean)
 
     fun contextTabs(): List<ContextTab> {
-        val paths = listOfNotNull(context?.path) + additions.filterIsInstance<Addition.File>()
-            .map(Addition.File::path).filterNot { it == context?.path }
+        val pinnedPaths = additions.filterIsInstance<Addition.File>().map(Addition.File::path).distinct()
+        val currentPath = context?.path
+        val paths = (pinnedPaths + listOfNotNull(currentPath)).distinct()
         val labels = shortestUniqueFileLabels(paths)
-        val main = ContextTab("main", "${context?.path?.let(labels::get) ?: "JavaScript"} · follows editor" +
-            (if (pinned) " · pinned" else ""), context?.path)
-        return listOf(main) + additions.filterIsInstance<Addition.File>()
-            .filterNot { it.path == context?.path }
-            .map { ContextTab(it.path, "${labels.getValue(it.path)} · pinned", it.path) }
+        val paused = if (debugPaused) " · paused at ${debugger?.positionText ?: "selected frame"}" else ""
+        val tabs = pinnedPaths.map { path ->
+            ContextTab(path, "${labels.getValue(path)} · pinned" + if (path == currentPath) paused else "", path, path == currentPath)
+        }
+        return if (currentPath != null && currentPath !in pinnedPaths) {
+            tabs + ContextTab(currentPath, "${labels.getValue(currentPath)} · follows editor$paused", currentPath, true)
+        } else if (currentPath == null) {
+            tabs + ContextTab("plain-javascript", "JavaScript · follows editor$paused", null, true)
+        } else tabs
     }
 
     private fun shortestUniqueFileLabels(paths: List<String>): Map<String, String> {
@@ -99,6 +121,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
                 if (ready == null || changed.extension?.lowercase() !in setOf("js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx")) return
                 val markChanged = {
                     modifiedVersions[changed.path] = ++editVersion
+                    editedPaths.add(changed.path)
                     if (changed == context || changed.path in addedFilePaths) {
                         stalePaths.add(changed.path)
                         updateContextStatus()
@@ -113,6 +136,43 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
                 if (ready != null) followEditor()
             }
         })
+        project.messageBus.connect(this).subscribe(XBreakpointListener.TOPIC, object : XBreakpointListener<XBreakpoint<*>> {
+            override fun breakpointAdded(breakpoint: XBreakpoint<*>) = refreshForBreakpoint(breakpoint)
+            override fun breakpointChanged(breakpoint: XBreakpoint<*>) = refreshForBreakpoint(breakpoint)
+            override fun breakpointRemoved(breakpoint: XBreakpoint<*>) {
+                pendingBreakpointUpdates.remove(breakpoint)?.complete(null)
+            }
+            override fun breakpointPresentationUpdated(breakpoint: XBreakpoint<*>, session: XDebugSession?) {
+                if (session == debugger?.session) pendingBreakpointUpdates.remove(breakpoint)?.complete(null)
+            }
+        })
+    }
+
+    private fun refreshForBreakpoint(breakpoint: XBreakpoint<*>) {
+        if (debugger == null) return
+        val line = breakpoint as? XLineBreakpoint<*> ?: return
+        if (line.type.id != "javascript" || !line.isEnabled) return
+        val file = VirtualFileManager.getInstance().findFileByUrl(line.fileUrl) ?: return
+        val epoch = generation
+        val refresh = {
+            if (ready != null && file.path in knownContextPaths &&
+                (file == context || file.path in addedFilePaths)) {
+                // The DAP adapter registers new breakpoints asynchronously. Keep
+                // the next evaluation behind its presentation update and reload
+                // this module only after the adapter has accepted the breakpoint.
+                val gate = CompletableFuture<Void>()
+                pendingBreakpointUpdates.put(line, gate)?.complete(null)
+                contextReady = contextReady?.thenCombine(gate) { backend, _ -> backend }
+                modifiedVersions[file.path] = ++editVersion
+                refreshContextIfNeeded()
+                CompletableFuture.delayedExecutor(1500, TimeUnit.MILLISECONDS).execute {
+                    pendingBreakpointUpdates.remove(line, gate)
+                    gate.complete(null)
+                }
+            }
+        }
+        if (ApplicationManager.getApplication().isDispatchThread) refresh()
+        else onEdt(epoch) { refresh() }
     }
 
     fun attach(append: (String, OutputKind, List<ConsoleStyle>) -> Unit, statusChanged: (String) -> Unit) {
@@ -132,8 +192,17 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
 
     fun stop(): CompletableFuture<*> {
         generation++
+        pendingBreakpointUpdates.values.forEach { it.complete(null) }
+        pendingBreakpointUpdates.clear()
         runtime?.close()
+        debugger?.close()
+        debugger = null
         return runtime?.termination ?: CompletableFuture.completedFuture(null)
+    }
+
+    fun openContextFile(path: String) {
+        val file = LocalFileSystem.getInstance().findFileByPath(path) ?: return
+        if (file.isValid) FileEditorManager.getInstance(project).openFile(file, true)
     }
 
     fun togglePin() {
@@ -143,12 +212,17 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
 
     fun restart() {
         val epoch = ++generation
+        pendingBreakpointUpdates.values.forEach { it.complete(null) }
+        pendingBreakpointUpdates.clear()
         stalePaths.clear()
         restartPaths.clear()
         modifiedVersions.clear()
+        editedPaths.clear()
         knownContextPaths.clear()
         refreshing = false
         runtime?.close()
+        debugger?.close()
+        debugger = null
         runtime = null
         currentNames = emptySet()
         addedNames = emptySet()
@@ -161,15 +235,28 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
             val executable = BunRuntimeLocator.locate(selectedBun)
             val script = BootstrapManager.materialize()
             val cwd = Path.of(project.basePath ?: System.getProperty("user.home"))
-            BunConsoleProcess(executable, script, cwd,
+            val bridge = if (JsConsoleSettings.getInstance().debugEnabled) {
+                BunDebugBridge(project,
+                    { onEdt(epoch) { updateContextStatus() } },
+                    { onEdt(epoch) {
+                        debugger = null
+                        updateContextStatus()
+                        write("Debugger disconnected; console continues without breakpoints. Restart Runtime to reconnect\n")
+                    } })
+            } else null
+            val backend = BunConsoleProcess(executable, script, cwd,
                 { text, error -> onEdt(epoch) { write(text, error) } },
-                { reason -> onEdt(epoch) { updateStatus("Stopped · $reason"); write("$reason\n", true) } })
-        }, background).thenCompose { backend ->
+                { reason -> onEdt(epoch) { debugger?.close(); updateStatus("Stopped · $reason"); write("$reason\n", true) } },
+                bridge?.let { it::attach })
+            backend to bridge
+        }, background).thenCompose { (backend, bridge) ->
             val launched = CompletableFuture<BunConsoleProcess>()
-            onEdt(epoch, { backend.close(); launched.completeExceptionally(IllegalStateException("Startup superseded")) }) {
+            onEdt(epoch, { backend.close(); bridge?.close(); launched.completeExceptionally(IllegalStateException("Startup superseded")) }) {
                 runtime = backend
+                debugger = bridge
                 backend.start().whenComplete { value, error ->
-                    if (error == null) launched.complete(value) else launched.completeExceptionally(error)
+                    if (error == null) { bridge?.runtimeReady(); launched.complete(value) }
+                    else { bridge?.close(); launched.completeExceptionally(error) }
                 }
             }
             launched
@@ -180,7 +267,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
 
     fun execute(source: String, styles: List<ConsoleStyle> = emptyList()) {
         if (source.isBlank()) return
-        refreshContextIfNeeded()
+        if (!debugPaused) refreshContextIfNeeded()
         val id = ++command
         history.add(source)
         if (history.size > 500) history.removeAt(0)
@@ -188,6 +275,14 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         writeEntry(source, OutputKind.JAVASCRIPT, styles)
         write("\n")
         val epoch = generation
+        if (debugPaused) {
+            val result = debugger?.evaluate(source) ?: return
+            result.whenComplete { value, error -> onEdt(epoch) {
+                if (error != null) write("[$id] ${message(error)}\n", true)
+                else { write("[$id] "); writeEntry(value, OutputKind.RESULT); write("\n") }
+            } }
+            return
+        }
         val backend = contextReady ?: return
         backend.thenComposeAsync({
             val evaluation = ReadAction.computeBlocking<ConsoleImports.Evaluation, RuntimeException> {
@@ -206,9 +301,9 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
             } }
     }
 
-    /** Refresh edited context modules at the next console interaction, without resetting REPL variables. */
+    /** Reimport edited contexts, or restart the console runtime when an enabled breakpoint must be rebound. */
     fun refreshContextIfNeeded() {
-        if (refreshing || modifiedVersions.isEmpty() || ready == null) return
+        if (debugPaused || refreshing || modifiedVersions.isEmpty() || ready == null) return
         val previous = contextReady ?: return
         val epoch = generation
         // A previously selected file can wait until it becomes the current
@@ -218,6 +313,14 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         }
         if (versions.isEmpty()) return
         val direct = versions.keys.filter { it == context?.path || it in addedFilePaths }
+        val debugEdit = if (debugger != null) direct.firstOrNull {
+            it in editedPaths && hasEnabledJavaScriptBreakpoint(it)
+        } else null
+        if (debugEdit != null) {
+            write("Restarting runtime to keep breakpoints synchronized after ${Path.of(debugEdit).fileName} changed\n")
+            restart()
+            return
+        }
         refreshing = true
         val next = previous.thenComposeAsync({ backend ->
             backend.request("cached_files").handle { result, error ->
@@ -260,6 +363,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
                                 additions[index] = Addition.File(outcome.path, bindings)
                             }
                             stalePaths.remove(outcome.path)
+                            editedPaths.remove(outcome.path)
                             restartPaths.remove(outcome.path)
                         }
                         addedNames = additions.flatMap {
@@ -291,6 +395,11 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
         } }
     }
 
+    private fun hasEnabledJavaScriptBreakpoint(path: String): Boolean =
+        XDebuggerManager.getInstance(project).breakpointManager.allBreakpoints
+            .filterIsInstance<XLineBreakpoint<*>>()
+            .any { it.type.id == "javascript" && it.isEnabled &&
+                VirtualFileManager.getInstance().findFileByUrl(it.fileUrl)?.path == path }
     private data class ReloadResult(val path: String, val result: JsonObject?, val error: Throwable?)
 
     private fun normalizePath(path: String): String =
@@ -475,7 +584,7 @@ class JsConsoleProjectService(private val project: Project) : Disposable {
     private fun updateContextStatus() {
         val restart = restartPaths.firstOrNull()
         val changed = stalePaths.firstOrNull { it == context?.path || it in addedFilePaths }
-        updateStatus(contextTabs().first().label +
+        updateStatus((contextTabs().firstOrNull { it.active }?.label ?: "JavaScript") +
             when {
                 restart != null -> " · ${Path.of(restart).fileName} changed; Restart Runtime to update dependencies"
                 changed != null -> " · ${Path.of(changed).fileName} changed; updates when console is focused"

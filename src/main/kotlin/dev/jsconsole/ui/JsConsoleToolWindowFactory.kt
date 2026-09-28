@@ -2,6 +2,7 @@ package dev.jsconsole.ui
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.DumbAware
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -21,6 +22,7 @@ class JsConsoleToolWindowFactory : ToolWindowFactory, DumbAware {
             if (service.restartRequired) toolWindow.setTitleActions(listOf(restart))
             else toolWindow.setTitleActions(emptyList())
         }
+        Disposer.register(toolWindow.contentManager, panel)
         toolWindow.setAdditionalGearActions(panel.menuActions)
         tabs.install(panel)
     }

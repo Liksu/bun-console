@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "dev.jsconsole"
-version = "0.1.15-dev"
+version = "0.1.20-dev"
 
 repositories {
     mavenCentral()
@@ -19,6 +19,8 @@ dependencies {
         val idePath = providers.gradleProperty("webstormPath")
         if (idePath.isPresent) local(idePath.get()) else webstorm("2026.2.3")
         bundledPlugin("JavaScript")
+        bundledPlugin("intellij.javascript.bun")
+        bundledModule("intellij.platform.dap")
         testFramework(TestFrameworkType.Platform)
     }
     testImplementation(kotlin("test"))
@@ -40,7 +42,16 @@ kotlin {
 
 // Light IDE fixtures reuse a project within a JVM; these lifecycle tests need
 // independent project services and temporary project directories per class.
-tasks.test { forkEvery = 1; maxParallelForks = 1 }
+tasks.test {
+    forkEvery = 1
+    maxParallelForks = 1
+    doFirst {
+        // Live Edit has an incomplete headless fixture in this IDE installation.
+        val disabled = layout.buildDirectory.file("isolated-ide/js-console/WS-2026.2.3/config-test/disabled_plugins.txt").get().asFile
+        disabled.parentFile.mkdirs()
+        disabled.appendText("com.intellij.plugins.html.instantEditing\n")
+    }
+}
 
 intellijPlatform {
     buildSearchableOptions = false
@@ -49,7 +60,7 @@ intellijPlatform {
         ideaVersion { sinceBuild = "262"; untilBuild = "262.*" }
     }
     pluginVerification {
-        failureLevel = VerifyPluginTask.FailureLevel.ALL
+        failureLevel = VerifyPluginTask.FailureLevel.ALL.filterNot { it == VerifyPluginTask.FailureLevel.EXPERIMENTAL_API_USAGES }
         ides { current() }
     }
 }

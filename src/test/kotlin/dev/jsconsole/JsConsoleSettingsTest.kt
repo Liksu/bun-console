@@ -17,6 +17,7 @@ import kotlin.test.assertFailsWith
 
 class JsConsoleSettingsTest : BasePlatformTestCase() {
     fun testSettingsPersistValidateAndOnlyAffectTheNextRuntime() {
+        assertFalse(JsConsoleSettings.Options().debugEnabled)
         val settings = JsConsoleSettings.getInstance()
         val original = settings.state
         val configurable = JsConsoleConfigurable()
@@ -25,13 +26,17 @@ class JsConsoleSettingsTest : BasePlatformTestCase() {
         try {
             settings.bunPath = ""
             settings.enterRuns = false
+            settings.debugEnabled = false
             val form = configurable.createComponent()
-            val automatic = descendants(form).filterIsInstance<JCheckBox>().single()
+            val checkboxes = descendants(form).filterIsInstance<JCheckBox>()
+            val automatic = checkboxes.single { it.text.startsWith("Find Bun automatically") }
+            val debugger = checkboxes.single { it.text == "Start console with debugger" }
             val executable = descendants(form).filterIsInstance<JTextField>().single()
             val inputKeys = descendants(form).filterIsInstance<JRadioButton>()
             assertEquals(2, inputKeys.size)
             assertTrue(inputKeys[0].isSelected)
             assertTrue(automatic.isSelected)
+            assertFalse(debugger.isSelected)
             assertFalse(executable.isEnabled)
             assertFalse(configurable.isModified)
             service.attach({ text, _, _ -> output.append(text) }, {})
@@ -47,12 +52,20 @@ class JsConsoleSettingsTest : BasePlatformTestCase() {
             configurable.apply()
             assertEquals(bun, settings.bunPath)
             assertFalse(configurable.isModified)
+            debugger.doClick()
+            assertTrue(configurable.isModified)
+            configurable.apply()
+            assertTrue(settings.debugEnabled)
             val persisted = XmlSerializer.serialize(settings.state)
             val restored = JsConsoleSettings().apply {
                 loadState(XmlSerializer.deserialize(persisted, JsConsoleSettings.Options::class.java))
             }
             assertEquals(bun, restored.bunPath)
             assertFalse(restored.enterRuns)
+            assertTrue(restored.debugEnabled)
+            debugger.doClick()
+            configurable.apply()
+            assertFalse(settings.debugEnabled)
             inputKeys[1].doClick()
             assertTrue(configurable.isModified)
             configurable.apply()

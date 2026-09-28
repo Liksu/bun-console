@@ -22,6 +22,7 @@ class BunConsoleProcess(
     private val workingDirectory: Path,
     private val output: (String, Boolean) -> Unit,
     private val stopped: (String) -> Unit,
+    private val debuggerAttach: ((String) -> CompletableFuture<Unit>)? = null,
 ) : AutoCloseable {
     private val gson = Gson()
     private val closed = AtomicBoolean()
@@ -39,9 +40,13 @@ class BunConsoleProcess(
         check(!closed.get()) { "Console stopped" }
         val server = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
         listener = server
-        server.soTimeout = 15_000
+        server.soTimeout = if (debuggerAttach == null) 15_000 else 45_000
         val token = UUID.randomUUID().toString()
-        val builder = ProcessBuilder(executable, bootstrap.toString()).directory(workingDirectory.toFile())
+        val endpoint = InspectorEndpoint(UUID.randomUUID().toString())
+        val arguments = mutableListOf(executable)
+        if (debuggerAttach != null) arguments.add("--inspect-wait=127.0.0.1:0/${endpoint.path}")
+        arguments.add(bootstrap.toString())
+        val builder = ProcessBuilder(arguments).directory(workingDirectory.toFile())
         builder.environment()["JS_CONSOLE_PORT"] = server.localPort.toString()
         builder.environment()["JS_CONSOLE_TOKEN"] = token
         builder.environment()["NO_COLOR"] = "1"
@@ -54,11 +59,28 @@ class BunConsoleProcess(
             io.execute {
                 runCatching {
                     stream.reader(Charsets.UTF_8).use { reader ->
-                        val buffer = CharArray(4096)
-                        while (true) {
-                            val count = reader.read(buffer)
-                            if (count < 0) break
-                            output(String(buffer, 0, count), error)
+                        if (error && debuggerAttach != null) {
+                            var inspectorBanner = false
+                            reader.buffered().forEachLine { line ->
+                                endpoint.accept("$line\n")?.let { url ->
+                                    try {
+                                        debuggerAttach.invoke(url).whenComplete { _, failure ->
+                                            if (failure != null) fail("Debugger could not attach: ${failure.message}")
+                                        }
+                                    } catch (failure: Exception) { fail("Debugger could not attach: ${failure.message}") }
+                                }
+                                val delimiter = line.contains("Bun Inspector")
+                                val informational = inspectorBanner || delimiter
+                                if (delimiter) inspectorBanner = !inspectorBanner
+                                output("$line\n", !informational)
+                            }
+                        } else {
+                            val buffer = CharArray(4096)
+                            while (true) {
+                                val count = reader.read(buffer)
+                                if (count < 0) break
+                                output(String(buffer, 0, count), error)
+                            }
                         }
                     }
                 }

@@ -20,6 +20,7 @@ class JsConsoleConfigurable : Configurable {
     private var automatic: JBCheckBox? = null
     private var executable: JBTextField? = null
     private var browse: JButton? = null
+    private var debugger: JBCheckBox? = null
     private var enterNewline: JBRadioButton? = null
     private var enterExecutes: JBRadioButton? = null
 
@@ -37,6 +38,8 @@ class JsConsoleConfigurable : Configurable {
         automatic = auto
         executable = path
         browse = picker
+        val attachDebugger = JBCheckBox("Start console with debugger")
+        debugger = attachDebugger
         val newlineOnEnter = JBRadioButton("Enter: new line; Ctrl+Enter: run")
         val runOnEnter = JBRadioButton("Enter: run; Shift+Enter: new line")
         ButtonGroup().apply { add(newlineOnEnter); add(runOnEnter) }
@@ -50,6 +53,9 @@ class JsConsoleConfigurable : Configurable {
             .addLabeledComponent(label, pathRow)
             .addComponent(JBLabel("Bun 1.4 or newer is required. This setting applies to all projects on this computer."))
             .addComponent(JBLabel("Changes take effect on the next console Restart. The current session keeps running."))
+            .addSeparator()
+            .addComponent(attachDebugger)
+            .addComponent(JBLabel("Enables breakpoints and paused-frame evaluation. Debug is shown only when execution pauses."))
             .addSeparator()
             .addComponent(JBLabel("Console input keys (take effect immediately):"))
             .addComponent(newlineOnEnter)
@@ -68,6 +74,7 @@ class JsConsoleConfigurable : Configurable {
 
     override fun isModified(): Boolean = automatic != null &&
         (selectedPath() != JsConsoleSettings.getInstance().bunPath ||
+            debugger?.isSelected != JsConsoleSettings.getInstance().debugEnabled ||
             enterExecutes?.isSelected != JsConsoleSettings.getInstance().enterRuns ||
             (automatic?.isSelected == false && selectedPath().isEmpty()))
 
@@ -80,6 +87,7 @@ class JsConsoleConfigurable : Configurable {
             catch (error: IllegalArgumentException) { throw ConfigurationException(error.message ?: "Invalid Bun executable path.") }
         }
         JsConsoleSettings.getInstance().bunPath = path
+        JsConsoleSettings.getInstance().debugEnabled = debugger?.isSelected == true
         JsConsoleSettings.getInstance().enterRuns = enterExecutes?.isSelected == true
     }
 
@@ -87,13 +95,14 @@ class JsConsoleConfigurable : Configurable {
         val saved = JsConsoleSettings.getInstance().bunPath
         automatic?.isSelected = saved.isEmpty()
         executable?.text = saved
+        debugger?.isSelected = JsConsoleSettings.getInstance().debugEnabled
         enterExecutes?.isSelected = JsConsoleSettings.getInstance().enterRuns
         enterNewline?.isSelected = !JsConsoleSettings.getInstance().enterRuns
         updateEnabled()
     }
 
     override fun disposeUIResources() {
-        automatic = null; executable = null; browse = null
+        automatic = null; executable = null; browse = null; debugger = null
         enterNewline = null; enterExecutes = null
     }
 }
