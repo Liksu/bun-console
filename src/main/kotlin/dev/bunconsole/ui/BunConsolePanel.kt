@@ -235,6 +235,8 @@ class BunConsolePanel(private val project: Project, statusChanged: (String) -> U
         if (input.text.isBlank()) return
         saveHistoryEdits()
         service.execute(input.text, input.getEditor(false)?.let { syntaxPrinter.capture(it) } ?: emptyList())
+        // A new command always brings the end of the transcript into view.
+        output.requestScrollingToEnd()
         input.text = ""
         draft = ""
         historyIndex = service.history.size

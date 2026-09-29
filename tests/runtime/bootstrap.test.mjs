@@ -30,6 +30,8 @@ async function start() {
           text = text.slice(end + 1);
           if (message.event === "output") {
             stdout += message.text;
+          } else if (message.event === "clear") {
+            stdout += "<clear>";
           } else if (message.event === "ready") {
             if (message.token === token) resolve(); else reject(new Error("Bad token"));
           } else {
@@ -474,3 +476,24 @@ test("values are printed completely: no depth limit, no hidden array items, no c
     expect(huge).toEndWith("… output cut at 5,000,000 of 6,000,002 characters");
   } finally { await runtime.stop(); }
 }, 20000);
+
+test("long arrays of primitives use the whole width; console.clear() asks the IDE to clear", async () => {
+  const runtime = await start();
+  const run = (code, columns = 120) => runtime.request("eval", { code, columns });
+  try {
+    const grid = (await run("Array.from({ length: 200 }, (_, i) => i * 10)")).text;
+    const rows = grid.split("\n").slice(1, -1);
+    expect(rows.every((row) => row.length <= 120)).toBe(true);
+    expect(rows[0].split(",").filter((cell) => cell.trim()).length).toBeGreaterThan(15);
+    expect(grid.match(/\d+/g).map(Number)).toEqual(Array.from({ length: 200 }, (_, i) => i * 10));
+    expect(rows[0].startsWith("     0,")).toBe(true); // numbers are right-aligned
+    const words = (await run("Array.from({ length: 60 }, (_, i) => 'w' + i)")).text;
+    expect(words.split("\n")[1].startsWith("  'w0' ,")).toBe(true); // strings are left-aligned
+    await run("console.log(Array.from({ length: 200 }, (_, i) => i))");
+    for (let i = 0; i < 50 && !runtime.stdout().includes("199"); i++) await Bun.sleep(10);
+    expect(runtime.stdout().split("\n").filter((line) => /\d/.test(line)).length).toBeLessThan(20);
+    await run("console.clear()");
+    for (let i = 0; i < 50 && !runtime.stdout().includes("<clear>"); i++) await Bun.sleep(10);
+    expect(runtime.stdout()).toContain("<clear>");
+  } finally { await runtime.stop(); }
+}, 15000);

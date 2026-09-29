@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /** Kind of text the Bun process prints: DevTools colors warnings apart from errors. */
-enum class ConsoleOutput { NORMAL, ERROR, WARNING }
+enum class ConsoleOutput { NORMAL, ERROR, WARNING, CLEAR }
 
 class BunConsoleProcess(
     private val executable: String,
@@ -106,6 +106,10 @@ class BunConsoleProcess(
                     while (!closed.get()) {
                         val line = reader.readLine() ?: break
                         val message = JsonParser.parseString(line).asJsonObject
+                        if (message.get("event")?.asString == "clear") {
+                            output("", ConsoleOutput.CLEAR)
+                            continue
+                        }
                         if (message.get("event")?.asString == "output") {
                             output(message.get("text")?.asString.orEmpty(), when (message.get("level")?.asString) {
                                 "warn" -> ConsoleOutput.WARNING

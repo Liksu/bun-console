@@ -80,6 +80,10 @@ class BunDebuggerModuleInitializationTest : BasePlatformTestCase() {
             WriteCommandAction.runWriteCommandAction(project) {
                 document.setText(document.text.replace("b = 'ABC'", "b = 'DEF'"))
             }
+            // Editing moves the breakpoint; the runtime must not restart while the user is still typing.
+            val editDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
+            PlatformTestUtil.waitWithEventsDispatching("Edit settle", { System.nanoTime() >= editDeadline }, 4)
+            assertFalse("Runtime restarted during editing: $output", output.contains("Restarting runtime"))
             service.execute("test(b)")
             PlatformTestUtil.waitWithEventsDispatching("Updated module did not stop: $output", {
                 service.debugPaused || output.contains("[3] ReferenceError")

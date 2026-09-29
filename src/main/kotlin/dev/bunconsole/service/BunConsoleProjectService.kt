@@ -244,8 +244,9 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
                 val gate = CompletableFuture<Void>()
                 pendingBreakpointUpdates.put(line, gate)?.complete(null)
                 contextReady = contextReady?.thenCombine(gate) { backend, _ -> backend }
+                // Editing a file moves its breakpoints too; like any edit, this is
+                // applied when the console gets focus or runs a command, not while typing.
                 modifiedVersions[file.path] = ++editVersion
-                refreshContextIfNeeded()
                 CompletableFuture.delayedExecutor(1500, TimeUnit.MILLISECONDS).execute {
                     pendingBreakpointUpdates.remove(line, gate)
                     gate.complete(null)
@@ -341,11 +342,12 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
             } else null
             val backend = BunConsoleProcess(executable, script, cwd,
                 { text, stream -> onEdt(epoch) {
-                    writeEntry(text, when (stream) {
-                        ConsoleOutput.NORMAL -> OutputKind.NORMAL
-                        ConsoleOutput.ERROR -> OutputKind.ERROR
-                        ConsoleOutput.WARNING -> OutputKind.WARNING
-                    })
+                    when (stream) {
+                        ConsoleOutput.NORMAL -> writeEntry(text, OutputKind.NORMAL)
+                        ConsoleOutput.ERROR -> writeEntry(text, OutputKind.ERROR)
+                        ConsoleOutput.WARNING -> writeEntry(text, OutputKind.WARNING)
+                        ConsoleOutput.CLEAR -> clearOutput()
+                    }
                 } },
                 { reason -> onEdt(epoch) {
                     debugger?.close()

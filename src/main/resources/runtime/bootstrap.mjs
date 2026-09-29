@@ -62,13 +62,46 @@ function fitToWidth(format) {
     if (!(error instanceof RangeError)) throw error;
     text = format({ ...COMPLETE, depth: 64, breakLength: columns }) + "\n(nested deeper than 64 levels; deeper levels are not shown)";
   }
+  return capped(text);
+}
+function capped(text) {
   return text.length <= MAX_OUTPUT ? text
     : `${text.slice(0, MAX_OUTPUT)}\n… output cut at ${MAX_OUTPUT.toLocaleString("en")} of ${text.length.toLocaleString("en")} characters`;
 }
+// util.inspect lays long arrays of primitives out in at most 15 columns;
+// use the whole width instead (numbers right-aligned, as util.inspect does).
+function isPrimitiveArray(value) {
+  if (!Array.isArray(value) || value.length < 2 || Object.keys(value).length !== value.length) return false;
+  return value.every((item) => item === null || (typeof item !== "object" && typeof item !== "function"));
+}
+function arrayGrid(value) {
+  const items = value.map((item) => inspect(item, COMPLETE));
+  const width = Math.max(...items.map((item) => item.length));
+  const perRow = Math.max(1, Math.floor((columns - 2) / (width + 2)));
+  const rows = [];
+  for (let start = 0; start < items.length; start += perRow) {
+    rows.push(items.slice(start, start + perRow).map((item, index) => {
+      const number = typeof value[start + index] === "number" || typeof value[start + index] === "bigint";
+      return number ? item.padStart(width) : item.padEnd(width);
+    }).join(", ").trimEnd());
+  }
+  return `[\n  ${rows.join(",\n  ")}\n]`;
+}
+function formatAny(value, format) {
+  if (isPrimitiveArray(value)) {
+    const line = format({ ...COMPLETE, compact: true, breakLength: Infinity });
+    if (line.length > columns) return capped(arrayGrid(value));
+  }
+  return fitToWidth(format);
+}
 for (const method of ["log", "info", "debug", "warn", "error"]) {
   const print = globalThis.console[method];
-  globalThis.console[method] = (...args) => print(fitToWidth((options) => formatWithOptions(options, ...args)));
+  globalThis.console[method] = (...args) => print(args.length === 1
+    ? formatAny(args[0], (options) => formatWithOptions(options, args[0]))
+    : fitToWidth((options) => formatWithOptions(options, ...args)));
 }
+// As in DevTools, console.clear() empties the console.
+globalThis.console.clear = () => send({ event: "clear" });
 
 function formatError(error) {
   try {
@@ -191,7 +224,7 @@ function userGlobals() {
 
 function render(value) {
   try {
-    return fitToWidth((options) => inspect(value, { ...options, customInspect: false }));
+    return formatAny(value, (options) => inspect(value, { ...options, customInspect: false }));
   } catch (error) { return `[Uninspectable value: ${formatError(error)}]`; }
 }
 

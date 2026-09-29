@@ -11,8 +11,8 @@ JetBrains Marketplace listing, and the GitHub Pages site.
   vendor profile of the uploading account (name, optional website and e-mail).
 - **License.** The repository is MIT-licensed (`LICENSE`). Select MIT in the Marketplace upload
   form; an open-source plugin must also link to its source code.
-- **Screenshots.** Put them into `docs/images/` (see [Screenshots](#screenshots)); the README uses
-  `docs/images/console.png`.
+- **Screenshots.** `docs/images/console.png`, `debugger.png` and `autocomplete.png`
+  (1200×884); the README shows them and they are uploaded to the plugin page.
 - **JetBrains account.** Sign in at <https://plugins.jetbrains.com> with the JetBrains Account
   that will own the plugin.
 

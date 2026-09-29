@@ -112,7 +112,8 @@ The run shortcut can be changed in *Settings → Keymap → Run Bun Console Inpu
 
 - **Results** are printed under the command with its number: `[3] > 1 + 1` → `[3] 2`.
   Values are printed **completely** — every array item, every nesting level, whole strings —
-  on one line when they fit the console width, otherwise laid out for that width. (Only output
+  on one line when they fit the console width, otherwise laid out for that width (long arrays of
+  numbers or strings fill the whole width). (Only output
   longer than 5 million characters is cut, with a note, to keep the IDE responsive.)
 - **Output** of `console.log`, `console.error`, `console.table` and `process.stdout.write`
   appears before the command's result, in order. Warnings are yellow and errors are red.
@@ -122,7 +123,8 @@ The run shortcut can be changed in *Settings → Keymap → Run Bun Console Inpu
 - **Top-level `await`** works: `await fetch("https://example.com").then(r => r.status)`.
 - **History** keeps the last 500 commands. A recalled command can be edited before running it.
   Moving down past the newest command brings back the text you were typing.
-- **Clear Output** (⋮ menu) empties the transcript but keeps variables, history and input.
+- **Clear Output** (⋮ menu) or `console.clear()` empties the transcript but keeps variables,
+  history and input.
 - **Restart Runtime** (⋮ menu) starts a fresh Bun process: variables are reset, the transcript,
   history and file contexts stay. Earlier commands are never replayed.
 
@@ -235,6 +237,13 @@ the breakpoint and the **Debug** window shows the stack and variables. The statu
 - completion offers the names in scope at that point;
 - **Continue**, **Step Over**, **Step Into** and **Step Out** are in the ⋮ menu (and in the Debug
   window). When the call finishes, its result is printed under its original command number.
+
+<p align="center">
+  <img src="docs/images/debugger.png" alt="A console call stopped at a breakpoint; the status line shows the pause location" width="800">
+</p>
+<p align="center">
+  <img src="docs/images/autocomplete.png" alt="While paused, input evaluates in the stack frame and completion offers its locals" width="800">
+</p>
 
 Turn the debugger off with the same button when you don't need it. If you edit a file that has breakpoints, the console restarts its runtime before the
 next command so the breakpoints stay attached to the new code.
