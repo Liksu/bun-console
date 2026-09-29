@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>dev.bunconsole</id>
     <name>Bun Console</name>
-    <vendor>Petro Borshchahivskyi</vendor>
+    <vendor url="https://github.com/Liksu">Petro Borshchahivskyi</vendor>
     <description><![CDATA[
 <p>Interactive console for JavaScript and TypeScript code of your project, running on
 <a href="https://bun.sh">Bun</a>.</p>

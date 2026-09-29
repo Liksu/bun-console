@@ -28,7 +28,7 @@ class BunConsoleConfigurable : Configurable {
     override fun getPreferredFocusedComponent(): JComponent? = automatic
 
     override fun createComponent(): JComponent {
-        val auto = JBCheckBox("Find Bun automatically (PATH, then ~/.bun/bin)")
+        val auto = JBCheckBox("Find Bun automatically (PATH, BUN_INSTALL, ~/.bun/bin)")
         val path = JBTextField()
         val picker = JButton("Browse…").apply {
             addActionListener {

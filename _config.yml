@@ -1,0 +1,18 @@
+# GitHub Pages site (Settings → Pages → Deploy from a branch → main / root).
+# README.md is the home page; the other Markdown files under docs/ become pages too.
+title: Bun Console
+description: Interactive JavaScript and TypeScript console for WebStorm, running on Bun
+theme: jekyll-theme-cayman
+exclude:
+  - build.gradle.kts
+  - settings.gradle.kts
+  - gradle.properties
+  - gradle
+  - gradlew
+  - gradlew.bat
+  - config
+  - scripts
+  - spikes
+  - src/main/kotlin
+  - src/test
+  - src/main/resources/runtime
