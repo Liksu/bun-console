@@ -6,11 +6,11 @@ JetBrains Marketplace listing, and the GitHub Pages site.
 ## 1. Before the first release (once)
 
 - **Plugin ID.** `<id>` in `plugin.xml` can never change after the first Marketplace upload.
-  It should be a reverse domain you control, for example `io.github.liksu.bunconsole`.
+  `dev.bunconsole` is the reverse of the project's own domain, `bunconsole.dev`.
 - **Vendor.** `<vendor>` in `plugin.xml` is shown on the plugin page. Marketplace also shows the
   vendor profile of the uploading account (name, optional website and e-mail).
-- **License.** Add a `LICENSE` file to the repository. The same license is selected in the
-  Marketplace upload form, and an open-source plugin must link to its source code.
+- **License.** The repository is MIT-licensed (`LICENSE`). Select MIT in the Marketplace upload
+  form; an open-source plugin must also link to its source code.
 - **Screenshots.** Put them into `docs/images/` (see [Screenshots](#screenshots)); the README uses
   `docs/images/console.png`.
 - **JetBrains account.** Sign in at <https://plugins.jetbrains.com> with the JetBrains Account

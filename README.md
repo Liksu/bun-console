@@ -303,4 +303,4 @@ the release checklist.
 
 ## License
 
-See [LICENSE](LICENSE).
+[MIT](LICENSE) © Petro Borshchahivskyi

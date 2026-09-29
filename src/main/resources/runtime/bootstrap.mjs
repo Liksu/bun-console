@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { PassThrough, Writable } from "node:stream";
 import { Console } from "node:console";
 import { StringDecoder } from "node:string_decoder";
-import { inspect } from "node:util";
+import { formatWithOptions, inspect } from "node:util";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { pathToFileURL } from "node:url";
 import { basename, dirname, extname, isAbsolute, resolve } from "node:path";
@@ -42,6 +42,19 @@ globalThis.console = new Console({ stdout: consoleStream("log"), stderr: console
 // DevTools shows warnings apart from errors (yellow rather than red).
 const warnings = new Console({ stdout: consoleStream("warn"), stderr: consoleStream("warn"), colorMode: false });
 globalThis.console.warn = (...args) => warnings.warn(...args);
+
+// Width of the IDE's output in characters, sent with every command.
+let columns = 120;
+// Like the DevTools console, a value that fits the output width is printed on
+// one line; a longer one is laid out for the actual width (not a terminal's 80).
+function fitToWidth(format) {
+  const line = format({ compact: true, breakLength: Infinity });
+  return line.length <= columns && !line.includes("\n") ? line : format({ breakLength: columns });
+}
+for (const method of ["log", "info", "debug", "warn", "error"]) {
+  const print = globalThis.console[method];
+  globalThis.console[method] = (...args) => print(fitToWidth((options) => formatWithOptions({ colors: false, ...options }, ...args)));
+}
 
 function formatError(error) {
   try {
@@ -164,7 +177,8 @@ function userGlobals() {
 
 function render(value) {
   try {
-    return inspect(value, { colors: false, depth: 4, maxArrayLength: 100, maxStringLength: 10000, customInspect: false });
+    return fitToWidth((options) => inspect(value,
+      { colors: false, depth: 4, maxArrayLength: 100, maxStringLength: 10000, customInspect: false, ...options }));
   } catch (error) { return `[Uninspectable value: ${formatError(error)}]`; }
 }
 
@@ -605,6 +619,7 @@ async function dispatch(request) {
   switch (request?.op) {
     case "eval": {
       if (typeof request.code !== "string") throw new Error("Expected JavaScript source");
+      if (Number.isInteger(request.columns)) columns = Math.min(Math.max(request.columns, 40), 1000);
       if (request.declarations != null && (!Array.isArray(request.declarations) ||
           request.declarations.some((name) => !isIdentifier(name)))) throw new Error("Invalid console declarations");
       await importModules(request.imports);

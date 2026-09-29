@@ -28,7 +28,11 @@ import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
+import com.intellij.openapi.editor.colors.EditorColorsManager
+import com.intellij.openapi.editor.colors.EditorFontType
 import java.awt.BorderLayout
+import java.awt.event.ComponentAdapter
+import java.awt.event.ComponentEvent
 import java.awt.Color
 import java.awt.Font
 import java.awt.Dimension
@@ -145,6 +149,9 @@ class BunConsolePanel(private val project: Project, statusChanged: (String) -> U
                 runButton.isEnabled = !disposed && input.text.isNotBlank()
             }
         }, this)
+        output.component.addComponentListener(object : ComponentAdapter() {
+            override fun componentResized(event: ComponentEvent) = updateColumns()
+        })
         val splitter = JBSplitter(true, 0.75f)
         splitter.setFirstComponent(output.component)
         splitter.setSecondComponent(entry)
@@ -180,6 +187,15 @@ class BunConsolePanel(private val project: Project, statusChanged: (String) -> U
             }
         }, { status -> showStatus(status); statusChanged(status) })
         historyIndex = service.history.size
+    }
+
+    /** Tell the runtime how many characters fit in a line of the output (minus the `[N] ` prefix). */
+    private fun updateColumns() {
+        val width = output.component.width
+        if (width <= 0) return
+        val font = EditorColorsManager.getInstance().globalScheme.getFont(EditorFontType.CONSOLE_PLAIN)
+        val charWidth = output.component.getFontMetrics(font).charWidth('0').coerceAtLeast(1)
+        service.outputColumns = ((width - JBUI.scale(32)) / charWidth - 6).coerceIn(40, 1000)
     }
 
     /** Text of the status line above the input, or null while it is hidden. */

@@ -435,3 +435,19 @@ test("declarations of a context file's imports are prepared before a dependency 
     if (directory.startsWith(tmpdir())) rmSync(directory, { recursive: true, force: true });
   }
 }, 15000);
+
+test("values that fit the output width print on one line; longer ones use the width", async () => {
+  const runtime = await start();
+  const run = (code, columns) => runtime.request("eval", { code, columns });
+  try {
+    const numbers = "Array.from({ length: 20 }, (_, i) => i + 1)";
+    expect((await run(numbers, 120)).text).toBe("[ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 ]");
+    expect((await run("({ a: 1, list: [1, 2], text: 'x' })", 120)).text).toBe("{ a: 1, list: [ 1, 2 ], text: 'x' }");
+    const narrow = (await run(numbers, 40)).text;
+    expect(narrow.split("\n").length).toBeGreaterThan(1);
+    expect(narrow.split("\n").every((line) => line.length <= 40)).toBe(true);
+    await run(`console.log('list', ${numbers})`, 120);
+    for (let i = 0; i < 50 && !runtime.stdout().includes("list [ 1,"); i++) await Bun.sleep(10);
+    expect(runtime.stdout()).toContain("list [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 ]");
+  } finally { await runtime.stop(); }
+}, 15000);

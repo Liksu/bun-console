@@ -138,6 +138,8 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
     var status: String = "Stopped"
         private set
     val restartRequired: Boolean get() = restartPaths.isNotEmpty()
+    /** Width of the output in characters; the runtime lays out results for it. */
+    @Volatile var outputColumns = 120
     /** Console commands still waiting for their result, by command number, with start times. */
     private val running = linkedMapOf<Long, Long>()
     private var busyTimer: Timer? = null
@@ -403,7 +405,7 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
                 ConsoleImports.prepare(project, source)
             }
             it.request("eval", mapOf("code" to evaluation.code, "imports" to evaluation.imports,
-                "declarations" to evaluation.declarations))
+                "declarations" to evaluation.declarations, "columns" to outputColumns))
         }, background)
             .whenComplete { result, error -> onEdt(epoch) {
                 running.remove(id)
