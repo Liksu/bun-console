@@ -10,6 +10,12 @@
 </p>
 
 <p align="center">
+  <a href="https://plugins.jetbrains.com/plugin/34626-bun-console"><img src="https://img.shields.io/jetbrains/plugin/v/34626?label=JetBrains%20Marketplace&color=0060ac" alt="JetBrains Marketplace version"></a>
+  <a href="https://plugins.jetbrains.com/plugin/34626-bun-console"><img src="https://img.shields.io/jetbrains/plugin/d/34626?color=fcaf17" alt="Downloads"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-0060ac" alt="MIT license"></a>
+</p>
+
+<p align="center">
   <img src="docs/images/console.png" alt="Bun Console in WebStorm: calling functions of the open TypeScript file" width="900">
 </p>
 
@@ -60,8 +66,9 @@ If you have used the developer console of a browser, most of it will feel famili
 
 ## Installation
 
-**From JetBrains Marketplace** (once published): *Settings → Plugins → Marketplace*, search for
-**Bun Console**, click *Install*.
+**From JetBrains Marketplace:** *Settings → Plugins → Marketplace*, search for **Bun Console**,
+click *Install* — or use *Install to IDE* on the
+[plugin page](https://plugins.jetbrains.com/plugin/34626-bun-console).
 
 **From a file:** download `bun-console-<version>.zip` from the
 [releases](https://github.com/Liksu/bun-console/releases), then *Settings → Plugins → ⚙ → Install
