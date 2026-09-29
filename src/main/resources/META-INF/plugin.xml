@@ -19,7 +19,8 @@
 statements, highlighting, completion of runtime names, command history, and more files in
 context with <b>Add File to Bun Console</b> or <b>Add Symbol to Bun Console</b>. If you use the
 browser developer console, it will feel familiar.</p>
-<p>Requires Bun 1.4 or newer. Open <b>View | Tool Windows | Bun Console</b>.</p>
+<p>Requires Bun 1.4 or newer. Open <b>View | Tool Windows | Bun Console</b>.
+Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
 ]]></description>
     <change-notes><![CDATA[
 <p>0.2.0</p>

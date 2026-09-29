@@ -70,7 +70,7 @@ On the plugin page (*Edit* mode):
 
 - **Screenshots/media:** upload the screenshots from `docs/images/`.
 - **Links:** source code `https://github.com/Liksu/bun-console`, issue tracker
-  `https://github.com/Liksu/bun-console/issues`, documentation — the GitHub Pages site.
+  `https://github.com/Liksu/bun-console/issues`, documentation `https://bunconsole.dev`.
 - **Getting started:** a short text can be copied from the README's *Quick start*.
 
 ## 5. Next versions
@@ -102,9 +102,20 @@ done by hand.
 ## GitHub Pages
 
 The repository root is published as a site with Jekyll (`_config.yml`), using the README as the
-home page. Enable it once: *Settings → Pages → Build and deployment → Deploy from a branch →
-`main` / `(root)` → Save*. The site appears at <https://liksu.github.io/bun-console/> after a
-minute and is rebuilt on every push to `main`.
+home page, on the custom domain **bunconsole.dev** (the `CNAME` file). One-time setup:
+
+1. DNS at the registrar: four `A` records for `bunconsole.dev` →
+   `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153`.
+   Optional: `AAAA` records `2606:50c0:8000::153`, `2606:50c0:8001::153`, `2606:50c0:8002::153`,
+   `2606:50c0:8003::153`, and a `CNAME` record `www` → `liksu.github.io` so that
+   `www.bunconsole.dev` redirects to the site.
+2. Recommended: verify the domain for your account (*GitHub Settings → Pages → Add a domain*,
+   add the `TXT` record it shows) so no other repository can claim it.
+3. Repository *Settings → Pages → Build and deployment → Deploy from a branch → `main` /
+   `(root)` → Save*. The custom domain is read from `CNAME`; wait for the DNS check, then tick
+   **Enforce HTTPS** (`.dev` domains work only over HTTPS; GitHub issues the certificate).
+
+The site is rebuilt on every push to `main`.
 
 ## Compatibility (Experimental DAP API)
 

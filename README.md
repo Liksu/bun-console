@@ -111,7 +111,9 @@ You can swap Enter and Ctrl+Enter in [Settings](#settings) (Enter runs, Shift+En
 The run shortcut can be changed in *Settings → Keymap → Run Bun Console Input*.
 
 - **Results** are printed under the command with its number: `[3] > 1 + 1` → `[3] 2`.
-  Objects are shown like `console.log` shows them in Node.js and Bun.
+  Values are printed **completely** — every array item, every nesting level, whole strings —
+  on one line when they fit the console width, otherwise laid out for that width. (Only output
+  longer than 5 million characters is cut, with a note, to keep the IDE responsive.)
 - **Output** of `console.log`, `console.error`, `console.table` and `process.stdout.write`
   appears before the command's result, in order. Warnings are yellow and errors are red.
 - **Declarations persist.** `const total = 42` stays available in later commands and appears in

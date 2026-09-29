@@ -45,15 +45,29 @@ globalThis.console.warn = (...args) => warnings.warn(...args);
 
 // Width of the IDE's output in characters, sent with every command.
 let columns = 120;
-// Like the DevTools console, a value that fits the output width is printed on
-// one line; a longer one is laid out for the actual width (not a terminal's 80).
+// The output is plain text, not an expandable tree as in DevTools, so values are
+// printed completely: no depth limit, no "… more items", no cut strings.
+const COMPLETE = { colors: false, depth: Infinity, maxArrayLength: Infinity, maxStringLength: Infinity };
+// Only a pathological size is cut, and visibly, to keep the IDE responsive.
+const MAX_OUTPUT = 5_000_000;
+// A value that fits the output width is printed on one line; a longer one is
+// laid out for the actual width (not a terminal's 80 columns).
 function fitToWidth(format) {
-  const line = format({ compact: true, breakLength: Infinity });
-  return line.length <= columns && !line.includes("\n") ? line : format({ breakLength: columns });
+  let text;
+  try {
+    const line = format({ ...COMPLETE, compact: true, breakLength: Infinity });
+    text = line.length <= columns && !line.includes("\n") ? line : format({ ...COMPLETE, breakLength: columns });
+  } catch (error) {
+    // Structures nested thousands of levels deep overflow the formatter's stack.
+    if (!(error instanceof RangeError)) throw error;
+    text = format({ ...COMPLETE, depth: 64, breakLength: columns }) + "\n(nested deeper than 64 levels; deeper levels are not shown)";
+  }
+  return text.length <= MAX_OUTPUT ? text
+    : `${text.slice(0, MAX_OUTPUT)}\n… output cut at ${MAX_OUTPUT.toLocaleString("en")} of ${text.length.toLocaleString("en")} characters`;
 }
 for (const method of ["log", "info", "debug", "warn", "error"]) {
   const print = globalThis.console[method];
-  globalThis.console[method] = (...args) => print(fitToWidth((options) => formatWithOptions({ colors: false, ...options }, ...args)));
+  globalThis.console[method] = (...args) => print(fitToWidth((options) => formatWithOptions(options, ...args)));
 }
 
 function formatError(error) {
@@ -177,8 +191,7 @@ function userGlobals() {
 
 function render(value) {
   try {
-    return fitToWidth((options) => inspect(value,
-      { colors: false, depth: 4, maxArrayLength: 100, maxStringLength: 10000, customInspect: false, ...options }));
+    return fitToWidth((options) => inspect(value, { ...options, customInspect: false }));
   } catch (error) { return `[Uninspectable value: ${formatError(error)}]`; }
 }
 

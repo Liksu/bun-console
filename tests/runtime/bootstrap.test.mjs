@@ -451,3 +451,26 @@ test("values that fit the output width print on one line; longer ones use the wi
     expect(runtime.stdout()).toContain("list [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 ]");
   } finally { await runtime.stop(); }
 }, 15000);
+
+test("values are printed completely: no depth limit, no hidden array items, no cut strings", async () => {
+  const runtime = await start();
+  const run = (code) => runtime.request("eval", { code, columns: 120 });
+  try {
+    const deep = (await run("({ a: { b: { c: { d: { e: { f: { g: 'bottom' } } } } } } })")).text;
+    expect(deep).toContain("'bottom'");
+    expect(deep).not.toContain("[Object]");
+    const long = (await run("Array.from({ length: 150 }, (_, i) => i)")).text;
+    expect(long).toContain("149");
+    expect(long).not.toContain("more items");
+    expect((await run("'x'.repeat(20000).length")).text).toBe("20000");
+    expect((await run("'x'.repeat(20000)")).text.length).toBe(20002);
+    await run("console.log({ a: { b: { c: { d: 'logged deep' } } } })");
+    for (let i = 0; i < 50 && !runtime.stdout().includes("logged deep"); i++) await Bun.sleep(10);
+    expect(runtime.stdout()).toContain("'logged deep'");
+    const nested = (await run("let node = {}; const root = node; for (let i = 0; i < 300; i++) node = node.next = {}; root")).text;
+    expect(nested).not.toContain("[Object]");
+    expect(nested.split("next:").length - 1).toBe(300);
+    const huge = (await run("'y'.repeat(6_000_000)")).text;
+    expect(huge).toEndWith("… output cut at 5,000,000 of 6,000,002 characters");
+  } finally { await runtime.stop(); }
+}, 20000);
