@@ -58,7 +58,7 @@ If you have used the developer console of a browser, most of it will feel famili
 
 ## Requirements
 
-| | |
+| Component | Requirement |
 | --- | --- |
 | IDE | WebStorm 2026.2 or newer (other IntelliJ-based IDEs with the JavaScript and Bun plugins may work, but are not tested) |
 | Runtime | [Bun](https://bun.sh/docs/installation) 1.4 or newer |
