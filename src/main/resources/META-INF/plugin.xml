@@ -3,21 +3,22 @@
     <name>JS Console</name>
     <vendor>Petro Borshchahivskyi</vendor>
     <description><![CDATA[
-<p>A Chrome DevTools–style console for JavaScript and TypeScript projects, running on
-<a href="https://bun.sh">Bun</a>. Try code against your project without leaving WebStorm.</p>
+<p>Interactive console for JavaScript and TypeScript code of your project, running on
+<a href="https://bun.sh">Bun</a>.</p>
 <ul>
-  <li>The file open in the editor is the console's context: call its functions, classes and
-      variables by name, exported or not, with no imports.</li>
-  <li>Files run only when the console first uses them; switching editor tabs never executes code.</li>
-  <li>Variables persist between commands; <code>const</code>, <code>let</code> and <code>class</code>
-      can be redeclared while you iterate, as in DevTools.</li>
-  <li>Top-level <code>await</code>, <code>import</code> statements, JavaScript highlighting,
-      completion and command history.</li>
-  <li>Pending promises never block the console; uncaught errors are printed, never fatal.</li>
-  <li>Keep extra files in context with <b>Add File to JS Console</b> or <b>Add Symbol to JS Console</b>.</li>
-  <li>Optional debugger: breakpoints stop console calls, and while any JavaScript program you
-      debug is paused, the console evaluates in the selected stack frame.</li>
+  <li><b>Call your code directly.</b> Functions, classes and variables of the file open in the
+      editor are available by name, exported or not, with no imports.</li>
+  <li><b>Debug from the console.</b> Breakpoints stop console calls; while any JavaScript program
+      you debug is paused, the console evaluates in the selected stack frame.</li>
+  <li><b>Iterate freely.</b> Variables persist between commands, and <code>const</code>,
+      <code>let</code> and <code>class</code> can be declared again as you refine a snippet.</li>
+  <li><b>Safe by default.</b> Switching editor tabs never runs code: a file runs only when the
+      console first uses it. Uncaught errors are printed, never fatal.</li>
 </ul>
+<p>Also: top-level <code>await</code> that never blocks the console, <code>import</code>
+statements, highlighting, completion of runtime names, command history, and more files in
+context with <b>Add File to JS Console</b> or <b>Add Symbol to JS Console</b>. If you use the
+browser developer console, it will feel familiar.</p>
 <p>Requires Bun 1.4 or newer. Open <b>View | Tool Windows | JS Console</b>.</p>
 ]]></description>
     <change-notes><![CDATA[
