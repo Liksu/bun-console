@@ -153,22 +153,51 @@ like a normal import. The same applies to the files it imports.
 
 If the whole module namespace is needed, it is available as `globalThis['parser.ts']`.
 
-### Keeping more files: tabs, pin, Add File
+### Keeping more files: pin, Add File, Add Symbol
 
-- **Pin** (⋮ → *Pin File Context*) keeps the current file in the console when the editor moves on.
-- **Add File to Bun Console** (editor or Project tree context menu) adds any JS/TS file, even one
-  that is not open. **Remove File from Bun Console** removes it.
-- **Add Symbol to Bun Console** (editor context menu) adds one top-level declaration under the
-  caret, from any file.
+By default the console follows the editor: open another file and its names replace the previous
+file's names. Three commands keep names around while you move through the project:
 
-Every context file has a tab above the output; clicking a tab opens that file. All tabs share one
-console: the same input, transcript and variables.
+| Command | Where | What stays available |
+| --- | --- | --- |
+| **Pin File Context** | ⋮ menu of the console (a checkbox) | every top-level name of the *current* file |
+| **Add File to Bun Console** | context menu of the editor or the Project tree | every top-level name of *any* JS/TS file, even one that is not open |
+| **Add Symbol to Bun Console** | context menu of the editor, caret on a name | *one* top-level declaration |
 
-When two context files declare the same name, the file following the editor keeps the short name
-and the other one gets an alias (`shared_2`); the transcript tells you which. A default export gets
-a name from the file (`parser_default` for `parser.ts`). Both files stay reachable as
-`globalThis['parser.ts']`; when file names repeat, the key includes the folder (`left/shared.ts`),
-as shown on the tabs.
+**Tabs.** Each context file has a tab above the output: pinned and added files first
+(`store.ts · pinned`), then the file following the editor (`parser.ts · follows editor`). Clicking a
+tab opens that file in the editor. All tabs show one and the same console — the same input,
+transcript and variables; the tabs only tell you which files' names are in scope.
+
+**Unpin / remove.** Uncheck *Pin File Context* while that file is open, or use **Remove File from
+Bun Console** in its context menu. Its names disappear; your own variables stay.
+
+**Add Symbol** works with the caret on a declaration (`function tokenize`, `const separators`,
+`class Parser`) or on any reference to one. It understands export lists such as
+`export { tokenize as split }` and names a default export after its declaration. Top-level
+declarations can be added whether they are exported or not; declarations nested inside functions
+are only reachable while paused in a frame where they are in scope ([Debugging](#debugging)).
+
+**Restart Runtime keeps all of it.** Pinned files, added files and added symbols come back in the
+fresh runtime; only variables created by your commands are reset.
+
+**Name clashes.** Your own variables and built-in globals (`process`, `console`, …) are never
+replaced; the transcript lists names that were skipped. When two context files declare the same
+name, the file following the editor keeps the short name and the other one gets an alias
+(`shared_2`); the transcript says which. A default export of an added file is named after the file
+(`parser_default` for `parser.ts`). Every context file is also reachable as a whole module:
+`globalThis['parser.ts']`, or with the folder when file names repeat (`globalThis['left/shared.ts']`,
+as on the tabs).
+
+For example, to try a store together with the code that uses it:
+
+```js
+// store.ts is open — pin it (⋮ → Pin File Context), then open app.ts
+add("apple")                 // from store.ts (pinned)
+render()                     // from app.ts (follows the editor)
+items                        // store.ts's non-exported array: [ 'apple' ]
+globalThis['store.ts']       // the whole module
+```
 
 ### Editing context files
 
