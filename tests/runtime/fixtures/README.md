@@ -1,6 +1,6 @@
 # Manual test files (the `runIde` sandbox opens this folder)
 
-Scratch files for checking JS Console by hand in `runIde` (see
+Scratch files for checking Bun Console by hand in `runIde` (see
 [docs/acceptance.md](../../../docs/acceptance.md), checks 17–24). Each file lists what
 to type in its comments.
 

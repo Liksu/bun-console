@@ -34,19 +34,19 @@ broken debugger, but a mandatory release for every IDE version.
    Plugin Verifier must report *Compatible*; only the approved Experimental DAP
    usages may be listed.
 3. Walk through [acceptance.md](acceptance.md) in `runIde`.
-4. Upload `build/distributions/js-console-<version>.zip` at
+4. Upload `build/distributions/bun-console-<version>.zip` at
    <https://plugins.jetbrains.com/plugin/add> (first release) or the plugin's
    *Versions* page. Automated publishing needs a Marketplace token
    (`intellijPlatform.publishing.token`) and is not configured.
 
 ## Before the first upload
 
-- **Plugin ID** `dev.jsconsole` can never change after the first upload. It
+- **Plugin ID** `dev.bunconsole` can never change after the first upload. It
   should be a reverse domain you control.
 - **Vendor**: `plugin.xml` names the vendor; Marketplace also shows the uploading
   account's vendor profile (optionally with a URL and e-mail).
 - **License / EULA** is chosen in the Marketplace upload form; add a matching
   `LICENSE` file if the source repository becomes public.
-- `CODEX_HANDOUT_JS_CONSOLE.md` and `docs/` describe internal development; decide
+- `CODEX_HANDOUT_BUN_CONSOLE.md` and `docs/` describe internal development; decide
   whether they belong in a public repository.
-- Name *JS Console* and ID `dev.jsconsole` were unused on Marketplace on 2026-09-28.
+- Name *Bun Console* and ID `dev.bunconsole` were unused on Marketplace on 2026-09-28.

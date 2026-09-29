@@ -11,7 +11,7 @@ could affect the user's working IDE or its settings, plugins, process, or work.
 
 ## 2026-09-23: read-only inventory
 
-- Workspace initially contained only `CODEX_HANDOUT_JS_CONSOLE.md`.
+- Workspace initially contained only `CODEX_HANDOUT_BUN_CONSOLE.md`.
 - Running IDE executable: `C:/Users/Petro/AppData/Local/Programs/WebStorm/bin/webstorm64.exe`.
 - Installed `product-info.json`: WebStorm **2026.2.3**, **WS-262.10968.77**,
   minimum Java **25**. This is the exact initial target, not an assumed version.
@@ -169,7 +169,7 @@ Verifier, and unstable/internal API inspections have actually passed.
   ownership to the user, so changing files does not delete that value. Lexical
   conflict detection also checks the VM context, not just object properties.
 - First Plugin Verifier run found a reserved word in the plugin ID; changed to
-  `dev.jsconsole`. The subsequent run found a deprecated chooser and compiler-
+  `dev.bunconsole`. The subsequent run found a deprecated chooser and compiler-
   generated delegates to deprecated/experimental `ToolWindowFactory` methods.
   Use `FileChooserDescriptorFactory.singleFile()` and Kotlin
   `JvmDefaultMode.NO_COMPATIBILITY`; bytecode inspection now shows only the
@@ -193,7 +193,7 @@ Verifier, and unstable/internal API inspections have actually passed.
   **WS-262.10968.77**; no internal, experimental, deprecated, or override-only
   API findings in the final plugin. The installed IDE's layout metadata produces
   warnings about missing unrelated module paths; these are not hidden.
-- Artifact: `build/distributions/js-console-0.1.0-dev.zip` (37,645 bytes).
+- Artifact: `build/distributions/bun-console-0.1.0-dev.zip` (37,645 bytes).
 - Artifact SHA-256: `3D84CE10992263CAF2E6F844C7A8A3B540A37E13ADCA64C27765BB95B65F5E44`.
 - Main validation log: `build/phase-0/final-validation.txt`.
 - JVM test reports: `build/reports/tests/test/index.html`.
@@ -219,7 +219,7 @@ its key listener competed with the IDE editor action system.
   the configured font, input syntax colors, and colored transcript replay.
 - `test buildPlugin verifyPlugin`: **BUILD SUCCESSFUL**, strict verifier verdict
   **Compatible** against WS-262.10968.77. Log: `build/phase-0/ui-fix-validation.txt`.
-- Artifact: `build/distributions/js-console-0.1.1-dev.zip` (46,574 bytes).
+- Artifact: `build/distributions/bun-console-0.1.1-dev.zip` (46,574 bytes).
   SHA-256: `B2B70ECA22C6D7C0389A47414D8698568B12102A321C59CDB861F32FE88F0F0D`.
 - Actual keyboard/focus retesting of this build and the separate JVM source
   inspection gate remain pending. No running IDE was restarted by the agent.
@@ -241,7 +241,7 @@ its key listener competed with the IDE editor action system.
 - Targeted history and semantic-color tests passed. The color test appends calls
   incrementally, deletes a trailing call, and clears/restores the expression.
   It drives analysis explicitly, so focused-window confirmation remains pending.
-- Artifact: `build/distributions/js-console-0.1.2-dev.zip` (49,876 bytes).
+- Artifact: `build/distributions/bun-console-0.1.2-dev.zip` (49,876 bytes).
   SHA-256: `1F4446FAD081E80ADE49A776F7487AEDD9B2B2C8046539495462B790D922D183`.
 - Full validation log: `build/phase-0/chain-validation.txt`.
 - `test buildPlugin verifyPlugin`: **BUILD SUCCESSFUL**, **5 JVM/platform tests
@@ -280,7 +280,7 @@ its key listener competed with the IDE editor action system.
 - Build/verifier log: `build/phase-0/console-fixes-validation.txt`.
 - Final `buildPlugin verifyPlugin`: **BUILD SUCCESSFUL**, strict verdict
   **Compatible** against WS-262.10968.77; no experimental/internal/deprecated API
-  findings. Archive `build/distributions/js-console-0.1.3-dev.zip`: 63,362 bytes,
+  findings. Archive `build/distributions/bun-console-0.1.3-dev.zip`: 63,362 bytes,
   SHA-256 `28A3EABC8D0C85D3D8966A4FAE9280223278EB3298B0B273ECD0801F7E0F2E60`.
 - Physical UI checks (icon states, mouse/keyboard focus) and separate JVM source
   inspections remain pending. The user's working IDE was not modified/restarted.
@@ -318,7 +318,7 @@ its key listener competed with the IDE editor action system.
   findings. Log: `build/phase-0/import-validation.txt`.
 - Separate Bun runtime suite: **3 tests passed, 37 assertions**. Log:
   `build/phase-0/import-runtime-tests.txt`.
-- Archive: `build/distributions/js-console-0.1.4-dev.zip`, **73,585 bytes**.
+- Archive: `build/distributions/bun-console-0.1.4-dev.zip`, **73,585 bytes**.
   SHA-256: `FAF80BA3E4A2A198A205BED8DE20A8EE322C54738029F3481D734D0D3DB058CF`.
 - Physical UI acceptance and separate JVM source inspections remain pending;
   these checks do not claim completion of the debugger/full handout scope.
@@ -326,10 +326,10 @@ its key listener competed with the IDE editor action system.
 ## Runtime settings: 0.1.5-dev (2026-09-24)
 
 - Bun selection moved from the console toolbar into **Settings → Tools →
-  JS Console**. Automatic mode uses PATH then `~/.bun/bin`; manual mode accepts
+  Bun Console**. Automatic mode uses PATH then `~/.bun/bin`; manual mode accepts
   an absolute path to an executable file. Missing/relative paths are rejected
   before saving. Runtime version validation still happens when Bun starts.
-- The application-level persistent service stores the choice in `js-console.xml`
+- The application-level persistent service stores the choice in `bun-console.xml`
   inside the IDE config directory, with roaming disabled for this machine-specific
   path. No settings files are created in user projects.
 - Apply saves the choice without restarting a running console. The next console
@@ -351,7 +351,7 @@ its key listener competed with the IDE editor action system.
   passed**, strict Plugin Verifier verdict **Compatible**. Log:
   `build/phase-0/settings-validation.txt`. Focused settings test log:
   `build/phase-0/settings-tests.txt`.
-- Archive: `build/distributions/js-console-0.1.5-dev.zip`, **81,058 bytes**.
+- Archive: `build/distributions/bun-console-0.1.5-dev.zip`, **81,058 bytes**.
   SHA-256: `E00962AD875FCFFC08862234A7E9EAD6B2AE164AD185B7A0B06DC63EDFB08311`.
   Physical UI acceptance and the separate JVM source-inspection gate remain
   pending. No working IDE profile was modified or restarted.
@@ -361,7 +361,7 @@ its key listener competed with the IDE editor action system.
 - The console used ordinary Swing `JButton`s in its own toolbar. WebStorm also
   uses Swing, but its tool-window commands are presented through the IntelliJ
   Action System. The custom button row and oversized Run button were removed.
-- Run Input, Restart Runtime, Clear Output, Pin File Context, and JS Console
+- Run Input, Restart Runtime, Clear Output, Pin File Context, and Bun Console
   Settings are now a `DefaultActionGroup` installed using the public
   `ToolWindow.setAdditionalGearActions` API. The IDE renders them inside its own
   options menu, alongside standard tool-window controls. Pin uses `ToggleAction`
@@ -381,7 +381,7 @@ its key listener competed with the IDE editor action system.
 - Full `test buildPlugin verifyPlugin`: **BUILD SUCCESSFUL**, **10 JVM/platform
   tests passed**, strict verifier verdict **Compatible**. Log:
   `build/phase-0/menu-validation.txt`. Separate JVM source inspections remain pending.
-- Archive: `build/distributions/js-console-0.1.6-dev.zip`, **84,961 bytes**.
+- Archive: `build/distributions/bun-console-0.1.6-dev.zip`, **84,961 bytes**.
   SHA-256: `BCA6A5C9D654472F2F904B9D23DCF708EA75BE5CBD5BE00EB0E6593B7852E569`.
 - References: [Action System](https://plugins.jetbrains.com/docs/intellij/action-system.html),
   [Tool-window menu API](https://intellij-support.jetbrains.com/hc/en-us/community/posts/22571693217810-Add-an-action-as-one-of-the-ToolWindow-Options).
@@ -393,7 +393,7 @@ its key listener competed with the IDE editor action system.
   absent from the running context. Editing an already imported file to add
   `initialText` exposed this gap: Bun still held the old module version, and Tab
   inserted an ES import into the REPL input.
-- For bare references in the JS Console input, completion now excludes project
+- For bare references in the Bun Console input, completion now excludes project
   source-file suggestions outside the input unless that name is bound in the
   current runtime context. Standard JavaScript library suggestions and ordinary
   editor completion remain available. When an active or added context file is
@@ -404,7 +404,7 @@ its key listener competed with the IDE editor action system.
   Tab/evaluation after Restart. `test buildPlugin verifyPlugin` passed with **15
   JVM/platform tests**, Plugin Verifier reported **Compatible** for WebStorm
   2026.2.3, and all **3 Bun runtime tests** passed. Archive:
-  `build/distributions/js-console-0.1.10-dev.zip`, **118,775 bytes**, SHA-256
+  `build/distributions/bun-console-0.1.10-dev.zip`, **118,775 bytes**, SHA-256
   `3CFFAF52785B0DE369336A5565C82FF58560E2B237C0416679E84DC97908BEEA`.
 
 ## Refresh without resetting console state: 0.1.11-dev (2026-09-26)
@@ -426,12 +426,12 @@ its key listener competed with the IDE editor action system.
   source-file save/reimport runs on each editor keystroke.
 - `test buildPlugin verifyPlugin`: **BUILD SUCCESSFUL**, **15 JVM/platform tests**,
   Plugin Verifier **Compatible** for WebStorm 2026.2.3. **4 Bun runtime tests**
-  passed. Archive: `build/distributions/js-console-0.1.11-dev.zip`, **129,867
+  passed. Archive: `build/distributions/bun-console-0.1.11-dev.zip`, **129,867
   bytes**, SHA-256 `04D7B2326F7719D9BFDE15B6DC63AED002D76A7E94C86C342C7DAE42B87A0E28`.
 
 ## Console input keys: 0.1.12-dev (2026-09-26)
 
-- Settings → Tools → JS Console now offers two input modes: Enter inserts a
+- Settings → Tools → Bun Console now offers two input modes: Enter inserts a
   newline and Ctrl+Enter runs (default), or Shift+Enter inserts a newline and
   Enter runs. The setting is persisted and updates open consoles immediately.
 - The Enter handler applies only to the console editor and yields to an active
@@ -440,7 +440,7 @@ its key listener competed with the IDE editor action system.
   is unregistered and is no longer displayed on its Run Input menu item.
 - `test buildPlugin verifyPlugin` passed with **15 JVM/platform tests** and
   Plugin Verifier **Compatible** for WebStorm 2026.2.3. **4 Bun runtime tests**
-  passed. Archive: `build/distributions/js-console-0.1.12-dev.zip`, **136,993
+  passed. Archive: `build/distributions/bun-console-0.1.12-dev.zip`, **136,993
   bytes**, SHA-256 `443FFD7E74196A34FEC6CA5D6DDF2CF8FDB47A7C9494914C8EBDAAD22914D4CF`.
 
 ## Multiline scrolling and edited declarations: 0.1.13-dev (2026-09-26)
@@ -461,7 +461,7 @@ its key listener competed with the IDE editor action system.
   to Bun; the focused IDE test passed twice and the full suite passed.
 - `test buildPlugin verifyPlugin`: **BUILD SUCCESSFUL**, **15 JVM/platform tests**,
   Plugin Verifier **Compatible** for WebStorm 2026.2.3. **6 Bun runtime tests**
-  passed. Archive: `build/distributions/js-console-0.1.13-dev.zip`, **137,572
+  passed. Archive: `build/distributions/bun-console-0.1.13-dev.zip`, **137,572
   bytes**, SHA-256 `2754B890E2CB17A2E26B7DB371303F028BAE7C63DE48868A8A9B086875EA81FD`.
 
 ## Following editor, qualified files, and resizable input: 0.1.14-dev (2026-09-26)
@@ -481,7 +481,7 @@ its key listener competed with the IDE editor action system.
   following plus pinning, unique tab labels, and the splitter orientation.
 - `test buildPlugin verifyPlugin`: **BUILD SUCCESSFUL**, **15 JVM/platform tests**,
   Plugin Verifier **Compatible** for WebStorm 2026.2.3. **7 Bun runtime tests**
-  passed. Archive: `build/distributions/js-console-0.1.14-dev.zip`, **141,632
+  passed. Archive: `build/distributions/bun-console-0.1.14-dev.zip`, **141,632
   bytes**, SHA-256 `C83CCEC987CB685ADDFB8A35A63C2856B0885F6D45ABC9D99FE2B9C385B1AF98`.
 
 ## Console redeclarations: 0.1.15-dev (2026-09-26)
@@ -502,7 +502,7 @@ its key listener competed with the IDE editor action system.
   an IDE integration test covers two `const` inputs followed by both lookups.
 - `test buildPlugin verifyPlugin`: **BUILD SUCCESSFUL**, **16 JVM/platform tests**,
   Plugin Verifier **Compatible** for WebStorm 2026.2.3. **7 Bun runtime tests**
-  passed. Archive: `build/distributions/js-console-0.1.15-dev.zip`, **142,960
+  passed. Archive: `build/distributions/bun-console-0.1.15-dev.zip`, **142,960
   bytes**, SHA-256 `10BE9E19E860E86F17D07378081C9E1D97222C10DB1911C56FD921DAD5BFB766`.
 
 ## Documentation consulted
@@ -548,7 +548,7 @@ its key listener competed with the IDE editor action system.
   Plugin Verifier: **Compatible** with WebStorm 2026.2.3; 20 usages of the
   approved Experimental DAP facade, with all other failure levels enforced.
 - 7 Bun runtime tests passed. `git diff --check` passed.
-- Archive: `build/distributions/js-console-0.1.16-dev.zip` (166,703 bytes),
+- Archive: `build/distributions/bun-console-0.1.16-dev.zip` (166,703 bytes),
   SHA-256 `DF1838C738A7DC652D223970892645A05DE2AD6F9CC45917DE4FB939D25F8138`.
 - No installation or manual run in the user's working IDE was performed.
 
@@ -566,15 +566,15 @@ its key listener competed with the IDE editor action system.
 - `test buildPlugin verifyPlugin`: **BUILD SUCCESSFUL**, 20 JVM/platform tests.
   Plugin Verifier: **Compatible** with WebStorm 2026.2.3; 20 usages of the
   approved Experimental DAP facade. 7 Bun runtime tests passed.
-- Archive: `build/distributions/js-console-0.1.17-dev.zip`. No installation or
+- Archive: `build/distributions/bun-console-0.1.17-dev.zip`. No installation or
   manual run in the user's working IDE was performed.
 
 ## Background debugger and reload synchronization: 0.1.18-dev (2026-09-27)
 
 - The DAP session still starts immediately because suspend-only initialization
   deadlocks Bun `--inspect-wait`, but Debug is hidden after the runtime handshake
-  and JS Console regains focus. Debug activates when a breakpoint pauses. Input
-  in JS Console remains available for selected-frame evaluation while paused.
+  and Bun Console regains focus. Debug activates when a breakpoint pauses. Input
+  in Bun Console remains available for selected-frame evaluation while paused.
 - Editing a current or pinned file with an enabled JavaScript breakpoint restarts
   only the console's Bun runtime before the next command. This avoids Bun's stale
   breakpoint binding after TypeScript recompilation and preserves transcript,
@@ -585,14 +585,14 @@ its key listener competed with the IDE editor action system.
 - `test buildPlugin verifyPlugin`: **BUILD SUCCESSFUL**, 21 JVM/platform tests.
   Plugin Verifier: **Compatible** with WebStorm 2026.2.3; 20 usages of the
   approved Experimental DAP facade. 7 Bun runtime tests passed.
-- Archive: `build/distributions/js-console-0.1.18-dev.zip` (175,475 bytes),
+- Archive: `build/distributions/bun-console-0.1.18-dev.zip` (175,475 bytes),
   SHA-256 `97588A06D492A433BB6F137416A189CAED642B24D2E19AF7E7E58226A7EB3FCA`.
 - `git diff --check` passed. No installation, attach, restart or manual run in
   the user's working WebStorm was performed.
 
 ## Independent console lifetime: 0.1.19-dev (2026-09-28)
 
-- Stopping WebStorm's Debug session no longer closes the JS Console Bun process.
+- Stopping WebStorm's Debug session no longer closes the Bun Console Bun process.
   The console continues evaluating commands without breakpoints and tells the
   user that Restart Runtime will reconnect the debugger.
 - `BunDebuggerServiceTest` now stops the Debug session and verifies that the same
@@ -600,27 +600,27 @@ its key listener competed with the IDE editor action system.
 - `test buildPlugin verifyPlugin`: **BUILD SUCCESSFUL**, 21 JVM/platform tests.
   Plugin Verifier: **Compatible** with WebStorm 2026.2.3; the approved 20
   Experimental DAP usages are unchanged. 7 Bun runtime tests passed.
-- Archive: `build/distributions/js-console-0.1.19-dev.zip` (175,523 bytes),
+- Archive: `build/distributions/bun-console-0.1.19-dev.zip` (175,523 bytes),
   SHA-256 `9337BEAA7D760F55298AE0CA027E0F1E3EFF654B36D3378FA838B24A0DD1836B`.
 - No installation, attach, restart or manual run in the user's working WebStorm
   was performed.
 
 ## Optional debugger mode: 0.1.20-dev (2026-09-28)
 
-- Settings → Tools → JS Console now has **Start console with debugger**, disabled
+- Settings → Tools → Bun Console now has **Start console with debugger**, disabled
   by default. Console-only mode launches the Bun bootstrap directly, without
   Inspector flags, `BunDebugBridge`, DAP or an XDebugger session.
 - Enabling the option applies on the next Restart Runtime and preserves the
   existing debugger behavior. Runtime settings never interrupt the current
   console when Apply is pressed.
 - In debugger mode, the Debug hide callback now explicitly shows and activates
-  JS Console. This serializes the two tool-window operations and prevents Debug
+  Bun Console. This serializes the two tool-window operations and prevents Debug
   from hiding after an earlier console activation request.
 - Settings, console-only service and debugger integration tests cover both paths.
 - `test buildPlugin verifyPlugin`: **BUILD SUCCESSFUL**, 21 JVM/platform tests.
   Plugin Verifier: **Compatible** with WebStorm 2026.2.3; the approved 20
   Experimental DAP usages are unchanged. 7 Bun runtime tests passed.
-- Archive: `build/distributions/js-console-0.1.20-dev.zip` (176,398 bytes),
+- Archive: `build/distributions/bun-console-0.1.20-dev.zip` (176,398 bytes),
   SHA-256 `DE382EF46874012BFD5F6CFDE6F5B900D52E295B793BF2FF7390BE7D9251507A`.
 - No installation, attach, restart or manual run in the user's working WebStorm
   was performed.

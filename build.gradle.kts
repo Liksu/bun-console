@@ -6,7 +6,7 @@ plugins {
     id("org.jetbrains.intellij.platform") version "2.19.0"
 }
 
-group = "dev.jsconsole"
+group = "dev.bunconsole"
 version = "0.2.0"
 
 repositories {
@@ -47,7 +47,7 @@ tasks.test {
     maxParallelForks = 1
     doFirst {
         // Live Edit has an incomplete headless fixture in this IDE installation.
-        val disabled = layout.buildDirectory.file("isolated-ide/js-console/WS-2026.2.3/config-test/disabled_plugins.txt").get().asFile
+        val disabled = layout.buildDirectory.file("isolated-ide/${rootProject.name}/WS-2026.2.3/config-test/disabled_plugins.txt").get().asFile
         disabled.parentFile.mkdirs()
         val liveEdit = "com.intellij.plugins.html.instantEditing"
         if (!disabled.exists() || liveEdit !in disabled.readLines()) disabled.appendText("$liveEdit\n")
@@ -56,7 +56,7 @@ tasks.test {
 
 // The sandbox IDE writes a development trace of the console (input, output, status, runtime traffic).
 tasks.named<JavaExec>("runIde") {
-    systemProperty("js.console.trace", layout.buildDirectory.file("js-console-trace.log").get().asFile.absolutePath)
+    systemProperty("bun.console.trace", layout.buildDirectory.file("bun-console-trace.log").get().asFile.absolutePath)
 }
 
 intellijPlatform {

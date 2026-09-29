@@ -1,1 +1,1 @@
-rootProject.name = "js-console"
+rootProject.name = "bun-console"

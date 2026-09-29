@@ -1,4 +1,4 @@
-// Checks 16–17: the console's own debugger (Debugger toggle ON in the JS Console title bar).
+// Checks 16–17: the console's own debugger (Debugger toggle ON in the Bun Console title bar).
 // Put a breakpoint on the `const total` line, then run in the console:
 //   checkout([{ price: 10, qty: 2 }, { price: 5, qty: 1 }])
 // While paused, type into the same console input:

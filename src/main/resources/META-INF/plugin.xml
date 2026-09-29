@@ -1,6 +1,6 @@
 <idea-plugin>
-    <id>dev.jsconsole</id>
-    <name>JS Console</name>
+    <id>dev.bunconsole</id>
+    <name>Bun Console</name>
     <vendor>Petro Borshchahivskyi</vendor>
     <description><![CDATA[
 <p>Interactive console for JavaScript and TypeScript code of your project, running on
@@ -17,9 +17,9 @@
 </ul>
 <p>Also: top-level <code>await</code> that never blocks the console, <code>import</code>
 statements, highlighting, completion of runtime names, command history, and more files in
-context with <b>Add File to JS Console</b> or <b>Add Symbol to JS Console</b>. If you use the
+context with <b>Add File to Bun Console</b> or <b>Add Symbol to Bun Console</b>. If you use the
 browser developer console, it will feel familiar.</p>
-<p>Requires Bun 1.4 or newer. Open <b>View | Tool Windows | JS Console</b>.</p>
+<p>Requires Bun 1.4 or newer. Open <b>View | Tool Windows | Bun Console</b>.</p>
 ]]></description>
     <change-notes><![CDATA[
 <p>0.2.0</p>
@@ -38,36 +38,36 @@ browser developer console, it will feel familiar.</p>
     <depends>intellij.javascript.bun</depends>
     <dependencies><module name="intellij.platform.dap"/></dependencies>
     <extensions defaultExtensionNs="com.intellij">
-        <platform.dap.launchArgumentsProvider implementation="dev.jsconsole.debug.ConsoleDapArgumentsProvider"/>
-        <applicationConfigurable parentId="tools" id="dev.jsconsole.settings" displayName="JS Console"
-                                 instance="dev.jsconsole.settings.JsConsoleConfigurable"/>
+        <platform.dap.launchArgumentsProvider implementation="dev.bunconsole.debug.ConsoleDapArgumentsProvider"/>
+        <applicationConfigurable parentId="tools" id="dev.bunconsole.settings" displayName="Bun Console"
+                                 instance="dev.bunconsole.settings.BunConsoleConfigurable"/>
         <completion.contributor language="JavaScript" order="first"
-                                implementationClass="dev.jsconsole.ui.ConsoleCompletionContributor"/>
-        <lang.inspectionSuppressor language="JavaScript" implementationClass="dev.jsconsole.ui.ConsoleInspectionSuppressor"/>
-        <editorActionHandler action="EditorUp" implementationClass="dev.jsconsole.ui.ConsoleHistoryHandler$Up"/>
-        <editorActionHandler action="EditorDown" implementationClass="dev.jsconsole.ui.ConsoleHistoryHandler$Down"/>
-        <editorActionHandler action="EditorEnter" implementationClass="dev.jsconsole.ui.ConsoleEnterHandler"/>
-        <editorActionHandler action="EditorStartNewLine" implementationClass="dev.jsconsole.ui.ConsoleShiftEnterHandler"/>
-        <toolWindow id="JS Console" anchor="bottom" icon="/icons/console.svg"
-                    factoryClass="dev.jsconsole.ui.JsConsoleToolWindowFactory"/>
+                                implementationClass="dev.bunconsole.ui.ConsoleCompletionContributor"/>
+        <lang.inspectionSuppressor language="JavaScript" implementationClass="dev.bunconsole.ui.ConsoleInspectionSuppressor"/>
+        <editorActionHandler action="EditorUp" implementationClass="dev.bunconsole.ui.ConsoleHistoryHandler$Up"/>
+        <editorActionHandler action="EditorDown" implementationClass="dev.bunconsole.ui.ConsoleHistoryHandler$Down"/>
+        <editorActionHandler action="EditorEnter" implementationClass="dev.bunconsole.ui.ConsoleEnterHandler"/>
+        <editorActionHandler action="EditorStartNewLine" implementationClass="dev.bunconsole.ui.ConsoleShiftEnterHandler"/>
+        <toolWindow id="Bun Console" anchor="bottom" icon="/icons/console.svg"
+                    factoryClass="dev.bunconsole.ui.BunConsoleToolWindowFactory"/>
     </extensions>
     <actions>
-        <action id="dev.jsconsole.AddFile" class="dev.jsconsole.ui.AddFileAction"
-                text="Add File to JS Console" description="Keep this file's exports in the console alongside the current editor file">
+        <action id="dev.bunconsole.AddFile" class="dev.bunconsole.ui.AddFileAction"
+                text="Add File to Bun Console" description="Keep this file's exports in the console alongside the current editor file">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
         </action>
-        <action id="dev.jsconsole.RemoveFile" class="dev.jsconsole.ui.RemoveFileAction"
-                text="Remove File from JS Console" description="Remove this file's added context from the console">
+        <action id="dev.bunconsole.RemoveFile" class="dev.bunconsole.ui.RemoveFileAction"
+                text="Remove File from Bun Console" description="Remove this file's added context from the console">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
         </action>
-        <action id="dev.jsconsole.AddSymbol" class="dev.jsconsole.ui.AddSymbolAction"
-                text="Add Symbol to JS Console" description="Import this module export into JS Console">
+        <action id="dev.bunconsole.AddSymbol" class="dev.bunconsole.ui.AddSymbolAction"
+                text="Add Symbol to Bun Console" description="Import this module export into Bun Console">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </action>
-        <action id="dev.jsconsole.RunInput" class="com.intellij.openapi.actionSystem.EmptyAction"
-                text="Run JS Console Input" description="Execute the input in JS Console">
+        <action id="dev.bunconsole.RunInput" class="com.intellij.openapi.actionSystem.EmptyAction"
+                text="Run Bun Console Input" description="Execute the input in Bun Console">
             <keyboard-shortcut keymap="$default" first-keystroke="control ENTER"/>
         </action>
     </actions>

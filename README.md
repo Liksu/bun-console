@@ -1,9 +1,9 @@
-# JS Console for WebStorm
+# Bun Console for WebStorm
 
 A WebStorm plugin project intended to provide a persistent Bun console with
 direct access to the current file's exports and integrated debugging.
 
-Requirements and acceptance criteria: [handout](CODEX_HANDOUT_JS_CONSOLE.md).
+Requirements and acceptance criteria: [handout](CODEX_HANDOUT_BUN_CONSOLE.md).
 Publishing notes: [marketplace.md](docs/marketplace.md).
 
 Current stage: **console with additional file contexts and experimental Bun debugger integration**.
@@ -28,21 +28,21 @@ Without `webstormPath`, Gradle resolves WebStorm 2026.2.3 from JetBrains.
 The plugin archive is written under `build/distributions/`.
 
 The `LoadingState / COMPONENTS_LOADED` startup error reported on this WebStorm
-build was reproduced without JS Console when restoring a project. See the
+build was reproduced without Bun Console when restoring a project. See the
 [diagnostic evidence and workaround](docs/webstorm-startup-issue.md).
 
 ## Use in a test IDE
 
 `gradlew runIde` uses a separate profile under `build/isolated-ide`.
-Open JS Console from the bottom tool-window stripe. By default, Enter adds a
-newline and Ctrl+Enter runs input. Under **Settings → Tools → JS Console**, you
+Open Bun Console from the bottom tool-window stripe. By default, Enter adds a
+newline and Ctrl+Enter runs input. Under **Settings → Tools → Bun Console**, you
 can instead choose Enter to run and Shift+Enter to add a newline. The selected
 mode takes effect in open consoles immediately; when Enter runs, Ctrl+Enter is
 disabled for that console. A completion popup retains its normal Enter behavior.
 Up/Down at the first/last visual line (or Alt+Up/Down) browse history.
 A compact **Run** button beside the input shows the current execution shortcut.
 Commands live in the tool window's native **⋮** menu: Run Input, Restart Runtime,
-Clear Output, Pin File Context, and JS Console Settings. Pin is a checked menu
+Clear Output, Pin File Context, and Bun Console Settings. Pin is a checked menu
 item. Every context file has one native tab: pinned files come first, and an
 unpinned file following the editor is appended last. The active file's tab is
 selected; returning to a pinned file selects its existing tab without a second
@@ -50,7 +50,7 @@ selected; returning to a pinned file selects its existing tab without a second
 shortest unique `folder/file` path. Selecting any tab keeps the same console
 input, transcript, and Bun session. Runtime startup and errors are reported in
 the transcript. The run shortcut can be changed under
-Settings → Keymap → Run JS Console Input and is active only inside this console.
+Settings → Keymap → Run Bun Console Input and is active only inside this console.
 Down past the newest command restores the unfinished draft. When completion is
 open, arrows navigate its suggestions. Input uses the IDE editor font, and
 submitted commands retain JavaScript syntax coloring in the output log.
@@ -88,7 +88,7 @@ that file alongside the one following the editor when browsing; Restart resets
 Bun and restores both kinds of file context.
 History stays visible; previous expressions are never replayed.
 
-Use **Add File to JS Console** on a JS/TS file in the editor or Project tree to
+Use **Add File to Bun Console** on a JS/TS file in the editor or Project tree to
 keep that file alongside the main context. Its exports are injected as bare
 names, remain available when the main context follows another editor tab, and
 return after Restart. The following editor file owns short names when two files
@@ -97,7 +97,7 @@ export the same name. Both full export namespaces are also available through
 same unique `folder/file` keys shown on the tabs. Name collisions in pinned
 files also receive aliases (`shared_2`, etc.);
 a default export is named from the file (`a_default` for `a.ts`). Use **Remove
-File from JS Console** on the same file to remove that added layer. Pin applies
+File from Bun Console** on the same file to remove that added layer. Pin applies
 to the file following the editor. The same command in the file context menu can
 add a file that has not been opened. Each file has one context tab, but all tabs display the same
 console session. Selecting or adding a file does not run it: the file is read
@@ -112,7 +112,7 @@ non-exported names explain that they need Restart Runtime. In CommonJS files
 only names in `module.exports` work; reading another top-level name says so.
 
 In a JS/TS editor, put the caret on an exported function or variable and choose
-**Add Symbol to JS Console** from the editor context menu. References to those
+**Add Symbol to Bun Console** from the editor context menu. References to those
 declarations, named default exports, and declarations exposed through
 `export { local as publicName }` work too. It opens the
 console and imports that one export into the persistent session, even when another
@@ -145,7 +145,7 @@ session. After it resumes, input returns to the console's own Bun runtime.
 Top-level `const`, `let` and `class` declarations can be repeated in later
 commands.
 
-Choose Bun under **Settings → Tools → JS Console**. Automatic detection uses the
+Choose Bun under **Settings → Tools → Bun Console**. Automatic detection uses the
 IDE's PATH lookup (which includes the login-shell PATH on macOS), then
 `$BUN_INSTALL/bin`, `~/.bun/bin` and the Homebrew/`/usr/local` locations; disable
 it to browse for an executable or enter an absolute path. The choice is saved in
@@ -172,12 +172,12 @@ are still available directly, without an import. Import attributes (`with`) are
 not yet supported; dynamic `import()` expressions keep the backend's behavior.
 
 Reading WebStorm's own Bun setting is blocked by its internal service API; the
-JS Console setting is separate. A missing runtime error points to the settings page.
+Bun Console setting is separate. A missing runtime error points to the settings page.
 Imports execute normal module top-level code. When the **Debugger** toggle is on,
 the console attaches WebStorm's Bun debugger to its Bun process. Locals of a
 function are available in a paused stack frame where JavaScript scope exposes
 them. The debugger initializes
-in the background: after its temporary Debug window is hidden, JS Console is
+in the background: after its temporary Debug window is hidden, Bun Console is
 shown and activated explicitly; WebStorm opens Debug again when execution stops
 at a breakpoint. While paused, you can switch back to JS
 Console and evaluate expressions against the selected stack frame. Stopping the

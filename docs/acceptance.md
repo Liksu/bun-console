@@ -104,13 +104,13 @@ Reference inspection IDs:
 Launch `runIde` only with separate config/system/plugin directories (the Gradle
 configuration uses `build/isolated-ide`). Open a disposable JS/TS project.
 
-1. Before opening JS Console, no Bun backend should exist.
+1. Before opening Bun Console, no Bun backend should exist.
 2. Click its stripe button: UI appears immediately, and typing during startup works.
 3. Check highlighting/completion, multiline Enter, Ctrl+Enter, Up/Down history.
    Fill the input with more lines than it can show and verify that
    the mouse wheel scrolls the input while the pointer is over it. Drag its
    upper divider to change the input height.
-   In Settings → Tools → JS Console, switch to Enter-to-run. Verify Enter runs,
+   In Settings → Tools → Bun Console, switch to Enter-to-run. Verify Enter runs,
    Shift+Enter inserts an indented newline, Ctrl+Enter no longer runs, and Enter
    still accepts an open completion suggestion. Switch back and verify the
    default keys return without reopening the console.
@@ -143,12 +143,12 @@ configuration uses `build/isolated-ide`). Open a disposable JS/TS project.
     `path.join(process.cwd(), 'texts')` in the same command, then reuse `path` in a
     later command. Repeat the import; it should succeed. Import a sibling file's
     export with an alias, switch context files, and confirm the alias still works.
-13. Open Settings → Tools → JS Console. Switch between automatic detection and
+13. Open Settings → Tools → Bun Console. Switch between automatic detection and
     an explicit Bun path; invalid paths must not be saved. Apply while a console
     variable exists: it must remain available until Restart. Reopen settings and
     restart the test IDE to confirm the choice is retained. The toolbar must have
     no Bun picker button. Confirm **Start console with debugger** is off by default:
-    opening/restarting JS Console must create no Debug session, and ordinary
+    opening/restarting Bun Console must create no Debug session, and ordinary
     evaluation must work. Enable it, Apply, and verify the current runtime is not
     interrupted; after Restart Runtime, breakpoint support should be active.
 14. Verify the tool window's native **⋮** menu contains the console commands and
@@ -176,15 +176,15 @@ configuration uses `build/isolated-ide`). Open a disposable JS/TS project.
     show the latest console value, while `globalThis['a.ts'].shared` still shows
     the file export.
 
-16. Open JS Console and verify startup leaves JS Console selected rather than
+16. Open Bun Console and verify startup leaves Bun Console selected rather than
     switching to Debug. Even if Debug appears briefly during adapter startup, it
-    must be hidden and JS Console must then be shown and activated. With a
+    must be hidden and Bun Console must then be shown and activated. With a
     breakpoint inside `twice`, run `twice(21)`: Debug
     should activate only when execution pauses. The status line above the input should show
     `paused at ...`; `x` and `y` typed into the same input should evaluate to `21`
     and `42`. Step Over and Continue in the native menu should work, and Continue
     should finish the original command under its original number. While paused,
-    switch back to JS Console and evaluate another local or expression in the
+    switch back to Bun Console and evaluate another local or expression in the
     selected frame. Restart while paused should close only this console's process
     and create a fresh debug-capable runtime. After the console has already loaded
     a file, add a new breakpoint in that file and immediately call its function:
@@ -193,7 +193,7 @@ configuration uses `build/isolated-ide`). Open a disposable JS/TS project.
     a file that has an enabled breakpoint and run its function again: the plugin
     should automatically restart only the console runtime and pause on the correct
     source line, never on the module's first line. Finally, stop the Debug session
-    and run another console expression: JS Console and its current Bun runtime
+    and run another console expression: Bun Console and its current Bun runtime
     should continue without breakpoints. Restart Runtime should reconnect Debug.
 17. Click the **Debugger** toggle in the console title bar: the runtime restarts
     once with the debugger (transcript, history and file tabs remain); clicking
@@ -212,11 +212,11 @@ configuration uses `build/isolated-ide`). Open a disposable JS/TS project.
 22. Run `console.log(1); console.error(2); 3`: `1`, `2` (red) and then `[N] 3`
     appear in this order, every time.
 23. Start a small Node.js or Bun script with WebStorm's own Debug and stop it at a
-    breakpoint. In JS Console (Debugger toggle off), the status line shows
+    breakpoint. In Bun Console (Debugger toggle off), the status line shows
     `paused in <session> at file:line`; a local variable typed into the console
     evaluates in that frame. Continue from the ⋮ menu resumes the script; the next
     input runs in the console's Bun runtime again.
-24. Settings → Plugins shows the JS Console icon, description and vendor.
+24. Settings → Plugins shows the Bun Console icon, description and vendor.
 
 Do not install into, attach to, restart, or change settings of the user's working
 WebStorm without explicit approval.

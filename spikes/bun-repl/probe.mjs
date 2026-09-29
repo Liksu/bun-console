@@ -66,7 +66,7 @@ async function runWorker() {
     const evaluate = (source) => new Promise((resolve, reject) => {
       const deadline = setTimeout(() => reject(new Error("Evaluator callback timed out")), 1500);
       try {
-        server.eval(`${source}\n`, server.context, "js-console-probe", (error, value) => {
+        server.eval(`${source}\n`, server.context, "bun-console-probe", (error, value) => {
           clearTimeout(deadline);
           if (error) reject(error);
           else resolve(value);

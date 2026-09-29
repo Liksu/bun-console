@@ -12,13 +12,13 @@ import { basename, dirname, extname, isAbsolute, resolve } from "node:path";
 import { builtinModules } from "node:module";
 
 // The IDE owns the loopback listener. User stdout/stderr are never a protocol.
-const port = Number(process.env.JS_CONSOLE_PORT);
-const token = process.env.JS_CONSOLE_TOKEN;
+const port = Number(process.env.BUN_CONSOLE_PORT);
+const token = process.env.BUN_CONSOLE_TOKEN;
 if (!Number.isInteger(port) || port < 1 || !token) throw new Error("Missing console connection settings");
 const [major, minor] = (process.versions.bun ?? "0.0").split(".").map(Number);
-if (major < 1 || (major === 1 && minor < 4)) throw new Error("JS Console requires Bun 1.4 or newer");
-delete process.env.JS_CONSOLE_PORT;
-delete process.env.JS_CONSOLE_TOKEN;
+if (major < 1 || (major === 1 && minor < 4)) throw new Error("Bun Console requires Bun 1.4 or newer");
+delete process.env.BUN_CONSOLE_PORT;
+delete process.env.BUN_CONSOLE_TOKEN;
 
 // Console output travels on the control socket, so the IDE shows it in order
 // with command results (as in DevTools). Output of child processes that
@@ -128,7 +128,7 @@ async function handle(request) {
 
 function send(message) {
   try { socket.write(`${JSON.stringify(message)}\n`); }
-  catch (error) { reportUncaught("JS Console could not send a reply:", error); }
+  catch (error) { reportUncaught("Bun Console could not send a reply:", error); }
 }
 
 function evaluate(source) {
@@ -140,7 +140,7 @@ function evaluate(source) {
     };
     evaluationScope.run(evaluation, () => {
       try {
-        server.eval(`${source}\n`, server.context, "js-console", (error, value) => {
+        server.eval(`${source}\n`, server.context, "bun-console", (error, value) => {
           if (error) evaluation.reject(error);
           else evaluation.resolve(value);
         });
@@ -239,7 +239,7 @@ function exposeDeclarations(record, declared) {
   const file = resolve(record.path);
   const filter = new RegExp(`^${escapeRegExp(file)}$`, process.platform === "win32" ? "i" : "");
   Bun.plugin({
-    name: `js-console declarations: ${file}`,
+    name: `bun-console declarations: ${file}`,
     setup(build) {
       build.onLoad({ filter }, ({ path }) => {
         const source = readFileSync(path, "utf8");

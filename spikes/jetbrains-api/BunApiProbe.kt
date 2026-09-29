@@ -1,4 +1,4 @@
-package dev.jsconsole.spike
+package dev.bunconsole.spike
 
 import com.intellij.javascript.bun.runConfiguration.run.BunRunConfiguration
 import com.intellij.javascript.bun.runConfiguration.run.BunRunConfigurationType

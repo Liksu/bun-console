@@ -1,9 +1,9 @@
 # WebStorm 262 startup LoadingState error
 
 Reproduced on 2026-09-24 with WebStorm **2026.2.3 / WS-262.10968.77**,
-bundled JBR **25.0.4**, Windows 11, **without JS Console installed**.
+bundled JBR **25.0.4**, Windows 11, **without Bun Console installed**.
 
-This is separate from the JS Console `saveContext` write-safe scheduling error
+This is separate from the Bun Console `saveContext` write-safe scheduling error
 fixed in 0.1.3. It is an IDE startup error printed while `runIde` is running,
 not a Kotlin compilation error.
 
@@ -11,7 +11,7 @@ not a Kotlin compilation error.
 
 A separate Java process launched the installed IDE using its product-info.json
 classpath and JVM options. Config, system, log and empty custom-plugin directories
-were all under `build/startup-baseline/`. No `plugin.path` or required JS Console
+were all under `build/startup-baseline/`. No `plugin.path` or required Bun Console
 plugin was supplied. Working/test IDE profiles already open by the user were not
 modified or terminated. Only diagnostic child processes were stopped.
 
@@ -42,7 +42,7 @@ Local diagnostic files (ignored build output):
 - `build/startup-baseline/plugins/` (empty)
 
 Missing JPS-module warnings and service-override warnings also appeared without
-JS Console. They are not evidence of a plugin build failure.
+Bun Console. They are not evidence of a plugin build failure.
 
 ## Status
 

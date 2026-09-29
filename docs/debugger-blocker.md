@@ -11,10 +11,10 @@ REPL. Restart closes this console's process/session and creates both again.
 Stopping the Debug session detaches only the debugger; the existing Bun REPL
 continues without breakpoints until Restart reconnects a new debug session.
 The session has a native Debug tab for breakpoint and frame state, but initialization
-returns focus to JS Console and keeps Debug out of the way until a breakpoint
+returns focus to Bun Console and keeps Debug out of the way until a breakpoint
 pauses execution. Continue and stepping are also available in the console menu
 while paused, the status line above the input shows the pause location, and completion offers the names in scope. You can switch
-back to JS Console while paused and evaluate expressions in the selected frame.
+back to Bun Console while paused and evaluate expressions in the selected frame.
 
 This uses the public **Experimental** `com.intellij.platform.dap` facade. The
 user explicitly approved that bounded exception on 2026-09-27. The integration
@@ -66,7 +66,7 @@ this build: it defers adapter initialization until pause, while Bun waits for
 the adapter to connect before executing. We initialize the session with
 `showTab(true)` and `showToolWindowOnSuspendOnly(false)` so the adapter connects
 and WebStorm owns the Debug tab's lifetime. When the runtime handshake completes,
-the plugin hides Debug if it was not already visible and restores JS Console if
+the plugin hides Debug if it was not already visible and restores Bun Console if
 startup stole focus; `sessionPaused` activates Debug when a breakpoint is hit.
 Recheck this workaround when upgrading WebStorm.
 
@@ -77,7 +77,7 @@ title bar and menu changes the setting and restarts the runtime at once; changin
 it in Settings affects the next Restart Runtime. Attaching to an already running
 runtime without a restart is not offered: Bun must start with `--inspect-wait`,
 and the adapter does not bind breakpoints to sources Bun has already loaded. In debugger mode the hide callback explicitly shows and activates
-JS Console, so the temporary Debug activation cannot leave both windows hidden.
+Bun Console, so the temporary Debug activation cannot leave both windows hidden.
 
 The installed Live Edit plugin has an incomplete headless test fixture; the
 Gradle test task disables Live Edit only in `build/isolated-ide/.../config-test`.

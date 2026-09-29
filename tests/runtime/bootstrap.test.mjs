@@ -44,7 +44,7 @@ async function start() {
   const process = spawn(Bun.which("bun") ?? Bun.argv[0], [
     fileURLToPath(new URL("../../src/main/resources/runtime/bootstrap.mjs", import.meta.url)),
   ], {
-    env: { ...globalThis.process.env, JS_CONSOLE_PORT: String(listener.address().port), JS_CONSOLE_TOKEN: token },
+    env: { ...globalThis.process.env, BUN_CONSOLE_PORT: String(listener.address().port), BUN_CONSOLE_TOKEN: token },
     stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
   });
   process.stdout.on("data", (chunk) => { stdout += chunk; });
@@ -151,7 +151,7 @@ test("edited commands replace console values without rerunning earlier side effe
 }, 15000);
 
 test("reload one context file keeps console state and refreshes its exports", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "js-console-reload-"));
+  const directory = mkdtempSync(join(tmpdir(), "bun-console-reload-"));
   const main = join(directory, "main.ts");
   const extra = join(directory, "extra.ts");
   const idePath = (path) => path.replaceAll("\\", "/");
@@ -180,7 +180,7 @@ test("reload one context file keeps console state and refreshes its exports", as
 }, 15000);
 
 test("reload a file that imports another module", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "js-console-dependency-"));
+  const directory = mkdtempSync(join(tmpdir(), "bun-console-dependency-"));
   const main = join(directory, "main.ts");
   const dependency = join(directory, "dependency.ts");
   writeFileSync(dependency, "export const dependent = 'old';");
@@ -201,7 +201,7 @@ test("reload a file that imports another module", async () => {
 }, 15000);
 
 test("active file owns short export names and files remain available by qualified name", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "js-console-names-"));
+  const directory = mkdtempSync(join(tmpdir(), "bun-console-names-"));
   const left = join(directory, "left", "shared.ts");
   const right = join(directory, "right", "shared.ts");
   mkdirSync(join(directory, "left"));
@@ -287,7 +287,7 @@ test("a pending await does not block later commands, and each result keeps its o
 }, 15000);
 
 test("context files are not executed until the console reads one of their bindings", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "js-console-lazy-"));
+  const directory = mkdtempSync(join(tmpdir(), "bun-console-lazy-"));
   const main = join(directory, "main.ts");
   const other = join(directory, "other.ts");
   writeFileSync(join(directory, "shared.ts"), "export const shared: number = 5;");
@@ -320,7 +320,7 @@ test("context files are not executed until the console reads one of their bindin
 }, 15000);
 
 test("non-exported top-level declarations listed by the IDE are available without changing source positions", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "js-console-declarations-"));
+  const directory = mkdtempSync(join(tmpdir(), "bun-console-declarations-"));
   const main = join(directory, "main.ts").replaceAll("\\", "/");
   const early = join(directory, "early.ts").replaceAll("\\", "/");
   const legacy = join(directory, "legacy.js").replaceAll("\\", "/");
@@ -373,7 +373,7 @@ test("console output arrives on the control channel before the command's result"
   }));
   const child = spawn(Bun.which("bun") ?? Bun.argv[0], [
     fileURLToPath(new URL("../../src/main/resources/runtime/bootstrap.mjs", import.meta.url)),
-  ], { env: { ...process.env, JS_CONSOLE_PORT: String(listener.address().port), JS_CONSOLE_TOKEN: token }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+  ], { env: { ...process.env, BUN_CONSOLE_PORT: String(listener.address().port), BUN_CONSOLE_TOKEN: token }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
   let piped = "";
   child.stdout.on("data", (chunk) => { piped += chunk; });
   try {
@@ -392,7 +392,7 @@ test("console output arrives on the control channel before the command's result"
 }, 15000);
 
 test("files created after Bun started load, and CommonJS names explain what is missing", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "js-console-late-files-"));
+  const directory = mkdtempSync(join(tmpdir(), "bun-console-late-files-"));
   const ide = (name) => join(directory, name).replaceAll("\\", "/");
   writeFileSync(ide("first.ts"), "export const first = 1;");
   const runtime = await start();
@@ -418,7 +418,7 @@ test("files created after Bun started load, and CommonJS names explain what is m
 }, 15000);
 
 test("declarations of a context file's imports are prepared before a dependency loads them", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "js-console-dependencies-"));
+  const directory = mkdtempSync(join(tmpdir(), "bun-console-dependencies-"));
   const ide = (name) => join(directory, name).replaceAll("\\", "/");
   writeFileSync(ide("store.ts"), "const items: string[] = [];\nexport function add(item: string) { return items.push(item); }");
   writeFileSync(ide("uses.ts"), "import { add } from './store';\nexport function useStore() { add('apple'); return add('pear'); }");
