@@ -49,7 +49,8 @@ class ConsoleStaleCompletionTest : BasePlatformTestCase() {
             val consoleFile = myFixture.configureByText("console.js", "ini<caret>")
             consoleFile.putUserData(ConsoleCompletionContributor.INPUT, true)
             val items = myFixture.completeBasic().orEmpty()
-            assertFalse("Console must not offer an import for an export absent from the runtime",
+            assertFalse("Console must not offer an import for an export absent from the runtime; " +
+                "names=${service.contextNames}; status=${service.status}; output=$output",
                 items.any { it.lookupString == "initialText" })
             assertTrue("Ordinary JavaScript completion should remain available",
                 items.any { it.lookupString == "isFinite" })

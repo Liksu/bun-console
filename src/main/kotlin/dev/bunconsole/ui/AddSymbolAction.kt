@@ -10,6 +10,11 @@ import com.intellij.lang.javascript.psi.ecmal4.JSClass
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.wm.ToolWindowManager
@@ -36,7 +41,17 @@ class AddSymbolAction : DumbAwareAction() {
         val file = event.getData(CommonDataKeys.PSI_FILE) ?: return
         val virtualFile = file.virtualFile ?: return
         PsiDocumentManager.getInstance(project).commitDocument(editor.document)
-        val selection = symbolAt(file, editor.caretModel.offset)
+        val offset = editor.caretModel.offset
+        // Resolving a reference may wait for the JavaScript resolver: do it off the UI thread,
+        // in a read action that is cancellable and needs up-to-date indexes.
+        ReadAction.nonBlocking<Selection?> { if (file.isValid) symbolAt(file, offset) else null }
+            .inSmartMode(project)
+            .expireWith(project)
+            .finishOnUiThread(ModalityState.defaultModalityState()) { selection -> addSelection(project, virtualFile, selection) }
+            .submit(AppExecutorUtil.getAppExecutorService())
+    }
+
+    private fun addSelection(project: Project, virtualFile: VirtualFile, selection: Selection?) {
         if (selection == null) {
             Messages.showInfoMessage(project, "Place the caret on a named top-level declaration or reference.", "Bun Console")
             return

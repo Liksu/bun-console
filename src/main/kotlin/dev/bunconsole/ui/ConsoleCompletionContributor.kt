@@ -7,6 +7,7 @@ import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.lang.javascript.psi.JSReferenceExpression
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.util.Key
+import dev.bunconsole.runtime.ConsoleFiles
 import dev.bunconsole.service.BunConsoleProjectService
 
 /** Runtime exports are already bound; accepting them must not trigger an ES module import. */
@@ -22,12 +23,13 @@ class ConsoleCompletionContributor : CompletionContributor() {
         result.runRemainingContributors(parameters) { candidate ->
             val item = candidate.lookupElement
             val source = item.psiElement?.containingFile?.virtualFile
-            // Project-file suggestions outside the current input may insert an ES import.
-            // Such imports are wrong in the REPL, even when the runtime context is stale.
-            if (item.lookupString !in names &&
-                (source == null || source == parameters.originalFile.virtualFile || !projectFiles.isInContent(source))) {
-                result.passResult(candidate)
-            }
+            // Exports of other source files (in the project or merely opened from elsewhere) would be
+            // accepted with an ES import that the runtime does not have, even when its context is stale.
+            // Library and built-in declarations (lib.d.ts, @types, packages) stay available.
+            val otherSource = source != null && source != parameters.originalFile.virtualFile &&
+                (projectFiles.isInContent(source) ||
+                    (ConsoleFiles.isSource(source) && !source.name.endsWith(".d.ts") && !projectFiles.isInLibrary(source)))
+            if (item.lookupString !in names && !otherSource) result.passResult(candidate)
         }
     }
 

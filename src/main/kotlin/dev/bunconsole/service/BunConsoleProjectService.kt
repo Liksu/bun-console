@@ -561,9 +561,7 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
      */
     private fun declarationFields(path: String?): Map<String, Any?> {
         val file = path?.let { LocalFileSystem.getInstance().findFileByPath(it) } ?: return emptyMap()
-        val graph = ApplicationManager.getApplication().runReadAction<Map<String, List<String>>> {
-            TopLevelDeclarations.withImports(project, file)
-        }
+        val graph = TopLevelDeclarations.collect(project, file)
         return mapOf("declared" to graph[file.path].orEmpty(), "dependencies" to graph - file.path)
     }
 

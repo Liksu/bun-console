@@ -23,6 +23,15 @@ browser developer console, it will feel familiar.</p>
 Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
 ]]></description>
     <change-notes><![CDATA[
+<p>0.2.1</p>
+<ul>
+  <li>Fixed an IDE error ("There is no ProgressIndicator or Job in this thread") when the console
+      restored its context in TypeScript projects, even before the console was used.</li>
+  <li>Add Symbol to Bun Console resolves the symbol in the background instead of on the UI thread.</li>
+  <li>Long arrays of numbers and strings use the full console width; values are never cut short.</li>
+  <li><code>console.clear()</code> clears the console; running a command scrolls to the end.</li>
+  <li>Editing a file with breakpoints no longer restarts the runtime while you type.</li>
+</ul>
 <p>0.2.0</p>
 <ul>
   <li>Evaluates in the paused frame of any JavaScript program you debug.</li>
