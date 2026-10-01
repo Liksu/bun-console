@@ -53,6 +53,7 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
         val SHOW_RUNNING_AFTER = TimeUnit.MILLISECONDS.toNanos(100)
         val PING_AFTER = TimeUnit.SECONDS.toNanos(1)
         const val DEBUGGER_ATTACH_FAILED = "Debugger could not attach"
+        const val IDLE_STATUS = "Bun starts when you use the console"
         val JAVASCRIPT_FRAME_EXTENSIONS = setOf("js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx", "vue", "svelte", "astro", "html", "htm")
     }
     private val background = Executors.newSingleThreadExecutor { task -> Thread(task, "Bun Console lifecycle").apply { isDaemon = true } }
@@ -203,7 +204,12 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
         }, this)
         project.messageBus.connect(this).subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, object : FileEditorManagerListener {
             override fun selectionChanged(event: FileEditorManagerEvent) {
-                if (ready != null) followEditor()
+                when {
+                    // Not started yet: only keep the tab label in step, nothing is loaded.
+                    ready == null -> { context = activeFile(); statusChanged?.invoke(status) }
+                    // While the console is hidden it does not follow the editor; showing it catches up.
+                    consoleVisible -> followEditor()
+                }
             }
         })
         project.messageBus.connect(this).subscribe(XBreakpointListener.TOPIC, object : XBreakpointListener<XBreakpoint<*>> {
@@ -262,7 +268,28 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
         this.statusChanged = statusChanged
         entries.forEach { (text, kind, styles) -> append(text, kind, styles) }
         statusChanged(status)
-        if (ready == null) restart()
+        // A restored tool window does not start Bun: the runtime starts on first use (activate()).
+        if (ready == null) {
+            context = activeFile()
+            updateStatus(IDLE_STATUS)
+        }
+    }
+
+    /** Whether the console's tool window is shown. While hidden, the console does not follow the editor. */
+    @Volatile var consoleVisible = true
+        private set
+
+    fun setConsoleVisible(visible: Boolean) {
+        consoleVisible = visible
+        if (visible && ready != null) followEditor()
+    }
+
+    /**
+     * The user is working with the console (focus in its input, a command, a menu action).
+     * Starts the runtime the first time; afterwards brings the context in line with the editor.
+     */
+    fun activate() {
+        if (ready == null) restart() else followEditor()
     }
 
     fun detach() { append = null; statusChanged = null }
@@ -380,6 +407,7 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
 
     fun execute(source: String, styles: List<ConsoleStyle> = emptyList()) {
         if (source.isBlank()) return
+        if (ready == null) restart()
         ConsoleTrace.log("INPUT", source + (pausedSession()?.let { "   [paused frame: ${it.sessionName}]" } ?: ""))
         if (!debugPaused) refreshContextIfNeeded()
         val id = ++command

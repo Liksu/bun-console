@@ -105,6 +105,11 @@ bun --version
 The tab above the output shows which file is the context (`parser.ts · follows editor`).
 Switch to another file in the editor and the console follows it.
 
+The console does nothing until you use it: when the IDE reopens a project with the tool window
+open, Bun is not started until you click into the input, run a command or use a console action.
+While the tool window is hidden, the console does not follow the editor either; it catches up
+when you show it again.
+
 ## Running code
 
 | Action | Keys |

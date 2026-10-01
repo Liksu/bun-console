@@ -32,6 +32,8 @@ class ConsoleContextTabsTest : BasePlatformTestCase() {
         var console: dev.bunconsole.ui.BunConsolePanel? = null
         try {
             BunConsoleToolWindowFactory().createToolWindowContent(project, toolWindow)
+            // The test tool window is never shown on screen; a hidden console would not follow the editor.
+            service.setConsoleVisible(true)
             val manager = toolWindow.contentManager
             assertEquals(1, manager.contents.size)
             val mainContainer = manager.contents.single().component as JPanel

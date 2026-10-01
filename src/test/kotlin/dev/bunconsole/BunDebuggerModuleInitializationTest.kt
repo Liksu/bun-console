@@ -52,6 +52,7 @@ class BunDebuggerModuleInitializationTest : BasePlatformTestCase() {
         val output = StringBuffer()
         try {
             service.attach({ text, _, _ -> output.append(text) }, {})
+            service.activate() // The runtime starts on first use, not when the tool window opens.
             PlatformTestUtil.waitWithEventsDispatching("Context not ready: $output", { "test" in service.contextNames }, 30)
             val startupDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
             PlatformTestUtil.waitWithEventsDispatching("Startup settle", { System.nanoTime() >= startupDeadline }, 3)

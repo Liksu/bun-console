@@ -40,6 +40,7 @@ class BunLateBreakpointTest : BasePlatformTestCase() {
         var breakpoint: com.intellij.xdebugger.breakpoints.XLineBreakpoint<XBreakpointProperties<*>>? = null
         try {
             service.attach({ text, _, _ -> output.append(text) }, {})
+            service.activate() // The runtime starts on first use, not when the tool window opens.
             PlatformTestUtil.waitWithEventsDispatching("Context not ready: $output", { "test" in service.contextNames }, 30)
             breakpoint = WriteAction.compute<com.intellij.xdebugger.breakpoints.XLineBreakpoint<XBreakpointProperties<*>>, RuntimeException> {
                 manager.addLineBreakpoint(type, file.url, 2, type.createBreakpointProperties(file, 2))

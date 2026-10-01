@@ -15,6 +15,7 @@ class BunConsoleBusyTest : BasePlatformTestCase() {
         val output = StringBuilder()
         try {
             service.attach({ text, _, _ -> output.append(text) }, {})
+            service.activate() // The runtime starts on first use, not when the tool window opens.
             service.execute("await new Promise(() => {})")
             service.execute("40 + 2")
             awaitOutput(output, "[2] 42")

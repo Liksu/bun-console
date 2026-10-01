@@ -28,6 +28,7 @@ class DependencyDeclarationsTest : BasePlatformTestCase() {
         val output = StringBuilder()
         try {
             service.attach({ text, _, _ -> output.append(text) }, {})
+            service.activate() // The runtime starts on first use, not when the tool window opens.
             PlatformTestUtil.waitWithEventsDispatching("Context not ready: $output", { "useStore" in service.contextNames }, 30)
             service.execute("useStore()")
             PlatformTestUtil.waitWithEventsDispatching("Dependency did not run: $output", { output.contains("[1] 2") }, 20)

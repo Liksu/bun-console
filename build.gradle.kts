@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "dev.bunconsole"
-version = "0.2.1"
+version = "0.2.2"
 
 repositories {
     mavenCentral()
@@ -45,6 +45,8 @@ kotlin {
 tasks.test {
     forkEvery = 1
     maxParallelForks = 1
+    // Same development trace as runIde, to diagnose failing IDE tests.
+    systemProperty("bun.console.trace", layout.buildDirectory.file("bun-console-trace-test.log").get().asFile.absolutePath)
     doFirst {
         // Live Edit has an incomplete headless fixture in this IDE installation.
         val disabled = layout.buildDirectory.file("isolated-ide/${rootProject.name}/WS-2026.2.3/config-test/disabled_plugins.txt").get().asFile

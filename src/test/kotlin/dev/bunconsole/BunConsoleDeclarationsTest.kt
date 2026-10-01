@@ -28,6 +28,7 @@ class BunConsoleDeclarationsTest : BasePlatformTestCase() {
         val output = StringBuilder()
         try {
             service.attach({ text, _, _ -> output.append(text) }, {})
+            service.activate() // The runtime starts on first use, not when the tool window opens.
             PlatformTestUtil.waitWithEventsDispatching("Context not ready: $output", { "tag" in service.contextNames }, 30)
             assertFalse("ambient" in service.contextNames)
             service.execute("[tag('a'), shout('b'), prefix].join(' ')")

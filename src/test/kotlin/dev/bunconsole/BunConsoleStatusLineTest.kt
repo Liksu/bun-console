@@ -17,6 +17,8 @@ class BunConsoleStatusLineTest : BasePlatformTestCase() {
         val panel = BunConsolePanel(project)
         val service = project.getService(BunConsoleProjectService::class.java)
         try {
+            assertEquals("Bun starts when you use the console", panel.statusText)
+            service.activate()
             PlatformTestUtil.waitWithEventsDispatching("Runtime did not start: ${panel.statusText}", { panel.statusText == null }, 30)
             service.execute("await new Promise((resolve) => setTimeout(resolve, 1500))")
             PlatformTestUtil.waitWithEventsDispatching("Running state not shown: ${panel.statusText}", {

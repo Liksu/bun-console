@@ -172,7 +172,10 @@ class BunConsolePanel(private val project: Project, statusChanged: (String) -> U
             editor.putUserData(ConsoleHistoryHandler.NAVIGATE) { previous -> if (previous) previous() else next() }
             editor.putUserData(ConsoleEnterHandler.RUN) { execute() }
             editor.contentComponent.addFocusListener(object : FocusAdapter() {
-                override fun focusGained(event: FocusEvent) { service.refreshContextIfNeeded() }
+                override fun focusGained(event: FocusEvent) {
+                    service.activate()
+                    service.refreshContextIfNeeded()
+                }
             })
         }
         input.toolTipText = "Enter behavior is set in Settings > Tools > Bun Console; Up/Down at the edges browse history"

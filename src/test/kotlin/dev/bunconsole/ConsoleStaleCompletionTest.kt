@@ -28,6 +28,7 @@ class ConsoleStaleCompletionTest : BasePlatformTestCase() {
         val output = StringBuilder()
         try {
             service.attach({ text, _, _ -> output.append(text) }, {})
+            service.activate() // The runtime starts on first use, not when the tool window opens.
             PlatformTestUtil.waitWithEventsDispatching("Initial export not loaded", { "b" in service.contextNames }, 20)
             service.execute("const mine = 7")
             PlatformTestUtil.waitWithEventsDispatching("Console variable not initialized", { output.contains("[1] undefined") }, 20)
@@ -96,9 +97,13 @@ class ConsoleStaleCompletionTest : BasePlatformTestCase() {
                     "saved=${Files.readString(extraPath)}; output=$output", error)
             }
             service.execute("[extra, another, mine].join(',')")
-            PlatformTestUtil.waitWithEventsDispatching("Added file reload lost state", {
-                output.contains("[5] 'new,9,7'")
-            }, 20)
+            try {
+                PlatformTestUtil.waitWithEventsDispatching("Added file reload lost state", {
+                    output.contains("[5] 'new,9,7'")
+                }, 20)
+            } catch (error: AssertionError) {
+                throw AssertionError("${error.message}; status=${service.status}; output=$output", error)
+            }
 
             WriteCommandAction.runWriteCommandAction(project) {
                 FileDocumentManager.getInstance().getDocument(dependencyFile)!!.setText("export const dependent = 'new';")

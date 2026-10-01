@@ -43,6 +43,7 @@ class BunDebuggerServiceTest : BasePlatformTestCase() {
         val output = StringBuffer()
         try {
             service.attach({ text, _, _ -> output.append(text) }, {})
+            service.activate() // The runtime starts on first use, not when the tool window opens.
             PlatformTestUtil.waitWithEventsDispatching("Context not ready: $output", { "twice" in service.contextNames }, 30)
             service.execute("twice(21)")
             PlatformTestUtil.waitWithEventsDispatching("Breakpoint not hit: $output", { service.debugPaused }, 30)

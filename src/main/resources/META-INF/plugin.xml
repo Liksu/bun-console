@@ -23,6 +23,13 @@ browser developer console, it will feel familiar.</p>
 Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
 ]]></description>
     <change-notes><![CDATA[
+<p>0.2.2</p>
+<ul>
+  <li>The console does nothing until you use it: a tool window restored with the project no longer
+      starts Bun; it starts on the first click into the input, command or console action.</li>
+  <li>While the tool window is hidden, the console does not follow the editor; it catches up when shown.</li>
+  <li>No false "Unavailable until Restart Runtime" message for names added to a file after it was loaded.</li>
+</ul>
 <p>0.2.1</p>
 <ul>
   <li>Fixed an IDE error ("There is no ProgressIndicator or Job in this thread") when the console

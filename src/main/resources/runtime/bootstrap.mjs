@@ -288,10 +288,14 @@ function exposeDeclarations(record, declared) {
   if (!Array.isArray(declared)) throw new Error("Invalid declarations");
   const loader = DECLARATION_LOADERS[extname(record.path).toLowerCase()];
   const exported = scanExports(record.path);
-  const names = [...new Set(declared)].filter((name) => typeof name === "string" && !exported.has(name) && isIdentifier(name));
+  const source = readFileSync(record.path, "utf8");
+  // The IDE lists declarations from the editor, which can be ahead of the file
+  // on disk; only names that the saved file contains can be exposed.
+  const names = [...new Set(declared)].filter((name) => typeof name === "string" && !exported.has(name) &&
+    isIdentifier(name) && new RegExp(`(^|[^$\\w])${escapeRegExp(name)}($|[^$\\w])`).test(source));
   // A CommonJS file would stop being CommonJS with an export statement. Its
   // names are only candidates: those missing from module.exports report why.
-  const commonJs = !loader || COMMON_JS.test(readFileSync(record.path, "utf8"));
+  const commonJs = !loader || COMMON_JS.test(source);
   record.locals = commonJs ? [] : names;
   record.commonJsCandidates = commonJs ? names : [];
   if (!record.locals.length || hooked.has(record.moduleId)) return;
@@ -305,6 +309,7 @@ function exposeDeclarations(record, declared) {
         const source = readFileSync(path, "utf8");
         const locals = record.locals ?? [];
         record.exposed = new Set(locals);
+        record.loadedSource = source;
         return { contents: locals.length ? `${source}\n;export { ${locals.join(", ")} };\n` : source, loader };
       });
     },
@@ -337,9 +342,12 @@ function moduleNames(record) {
     : scanExports(record.path);
   const hidden = [];
   if (!loaded) for (const name of record.commonJsCandidates ?? []) names.add(name);
+  // A file edited after it was loaded gets its new names when it is reloaded;
+  // they are not "hidden" by a dependency that loaded it first.
+  const stale = loaded && record.loadedSource !== undefined && record.loadedSource !== readFileSync(record.path, "utf8");
   for (const name of record.locals ?? []) {
     if (!loaded || record.exposed?.has(name)) names.add(name);
-    else { hidden.push(name); names.add(name); }
+    else if (!stale) { hidden.push(name); names.add(name); }
   }
   record.unavailable = new Set(hidden);
   return { names: [...names].sort(), hidden };
@@ -356,7 +364,10 @@ function readModule(record) {
   if (!record.namespace) {
     // Bun's synchronous require shares ES module instances with import(). On
     // Windows it needs the native path: `D:/…` fails for files created after Bun started.
+    // The source this instance runs, unless another module loaded it earlier.
+    const before = require.cache[resolve(record.path)] ? undefined : readFileSync(record.path, "utf8");
     const loaded = require(resolve(record.path));
+    record.loadedSource ??= before;
     // A CommonJS file yields module.exports; present it like import() does.
     record.namespace = Object.prototype.toString.call(loaded) === "[object Module]" ? loaded
       : Object.freeze({ ...(loaded !== null && typeof loaded === "object" ? loaded : {}), default: loaded });
@@ -368,6 +379,7 @@ function readModule(record) {
 function forget(record) {
   delete require.cache[resolve(record.path)];
   record.namespace = undefined;
+  record.loadedSource = undefined;
 }
 
 // Statically scanned names can differ from the evaluated module (for example

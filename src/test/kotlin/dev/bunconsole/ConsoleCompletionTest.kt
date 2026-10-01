@@ -25,6 +25,7 @@ class ConsoleCompletionTest : BasePlatformTestCase() {
         val output = StringBuilder()
         try {
             service.attach({ text, _, _ -> output.append(text) }, {})
+            service.activate() // The runtime starts on first use, not when the tool window opens.
             PlatformTestUtil.waitWithEventsDispatching("Exports not loaded", { "lexical" in service.contextNames }, 20)
             service.togglePin()
             val consoleFile = myFixture.configureByText("console.js", "lex<caret>")
