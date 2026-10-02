@@ -10,17 +10,6 @@
 
 ## Build and test
 
-On Windows, `test.bat` runs everything without any setup: it uses the Java bundled with WebStorm
-(`%WEBSTORM_PATH%`, default `%LOCALAPPDATA%\Programs\WebStorm`), runs the Bun runtime tests, then
-the IDE tests. Extra arguments go to Gradle:
-
-```bat
-test.bat
-test.bat --tests dev.bunconsole.ConsoleImportsTest
-```
-
-The same by hand:
-
 ```powershell
 $env:JAVA_HOME = "$env:LOCALAPPDATA\Programs\WebStorm\jbr"
 .\gradlew.bat -PwebstormPath="$env:LOCALAPPDATA\Programs\WebStorm" test buildPlugin verifyPlugin
@@ -39,6 +28,10 @@ Without `-PwebstormPath`, Gradle downloads WebStorm 2026.2.3. The plugin archive
   the approved Experimental DAP usages may be listed (see [debugger-blocker.md](debugger-blocker.md)).
 
 ## Sandbox IDE
+
+On Windows, double-click `run-ide.bat` (or run it): it uses the Java bundled with WebStorm
+(`%WEBSTORM_PATH%`, default `%LOCALAPPDATA%\Programs\WebStorm`), so nothing needs to be set up.
+The same by hand:
 
 ```powershell
 .\gradlew.bat -PwebstormPath="$env:LOCALAPPDATA\Programs\WebStorm" runIde
