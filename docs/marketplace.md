@@ -27,7 +27,8 @@ JetBrains Marketplace listing, and the GitHub Pages site.
    bun test .\tests\runtime\bootstrap.test.mjs
    ```
    Plugin Verifier must say *Compatible*; the only listed issues may be the approved
-   Experimental DAP usages ([why](#compatibility-experimental-dap-api)).
+   Experimental DAP usages ([why](#compatibility-experimental-dap-api)). Add `-PverifyEap` to also
+   verify against the next WebStorm EAP: APIs scheduled for removal show up there first.
 3. Walk through the manual [acceptance checks](acceptance.md) in `runIde`.
 4. The archive to publish is `build/distributions/bun-console-<version>.zip`.
 5. Commit, tag and push:

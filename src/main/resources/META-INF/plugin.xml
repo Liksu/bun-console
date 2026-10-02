@@ -23,6 +23,10 @@ browser developer console, it will feel familiar.</p>
 Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
 ]]></description>
     <change-notes><![CDATA[
+<p>0.2.4</p>
+<ul>
+  <li>Finding Bun on PATH no longer uses an IDE API scheduled for removal (compatible with WebStorm 2026.3).</li>
+</ul>
 <p>0.2.3</p>
 <ul>
   <li>Dynamic <code>import()</code> in the console resolves relative paths from the context file,

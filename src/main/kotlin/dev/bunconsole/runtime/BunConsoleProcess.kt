@@ -3,7 +3,7 @@ package dev.bunconsole.runtime
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import com.intellij.execution.configurations.PathEnvironmentVariableUtil
+import com.intellij.util.EnvironmentUtil
 import com.intellij.openapi.util.SystemInfo
 import java.io.BufferedWriter
 import java.net.InetAddress
@@ -186,10 +186,7 @@ object BunRuntimeLocator {
             require(Files.isRegularFile(path) && Files.isExecutable(path)) { "Bun executable not found or not executable: $explicit" }
             return explicit
         }
-        // The IDE's PATH lookup also sees the login-shell PATH on macOS/Linux and PATHEXT on Windows.
-        PathEnvironmentVariableUtil.findExecutableInPathOnAnyOS("bun")?.toPath()
-            ?.takeIf { Files.isRegularFile(it) && Files.isExecutable(it) }
-            ?.let { return it.toString() }
+        findOnPath("bun")?.let { return it.toString() }
         val binary = if (SystemInfo.isWindows) "bun.exe" else "bun"
         val home = Path.of(System.getProperty("user.home"))
         val candidates = listOfNotNull(
@@ -200,5 +197,24 @@ object BunRuntimeLocator {
         )
         return candidates.firstOrNull { Files.isRegularFile(it) && Files.isExecutable(it) }?.toString()
             ?: error("Bun was not found. Install Bun 1.4+ or select its executable in Settings > Tools > Bun Console.")
+    }
+
+    /**
+     * Search PATH as the IDE sees it: on macOS an IDE started from the Dock gets the
+     * login shell's PATH through EnvironmentUtil. On Windows, PATHEXT names the extensions.
+     */
+    private fun findOnPath(name: String): Path? {
+        val path = EnvironmentUtil.getValue("PATH") ?: System.getenv("PATH") ?: return null
+        val extensions = if (SystemInfo.isWindows) {
+            (System.getenv("PATHEXT") ?: ".COM;.EXE;.BAT;.CMD").split(';').filter { it.isNotBlank() }.map { it.lowercase() }
+        } else listOf("")
+        for (directory in path.split(java.io.File.pathSeparator)) {
+            if (directory.isBlank()) continue
+            for (extension in extensions) {
+                val candidate = runCatching { Path.of(directory.trim().trim('"'), name + extension) }.getOrNull() ?: continue
+                if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) return candidate
+            }
+        }
+        return null
     }
 }

@@ -1,4 +1,6 @@
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.intellij.platform.gradle.models.ProductRelease
 import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask
 
 plugins {
@@ -7,7 +9,7 @@ plugins {
 }
 
 group = "dev.bunconsole"
-version = "0.2.3"
+version = "0.2.4"
 
 repositories {
     mavenCentral()
@@ -71,6 +73,16 @@ intellijPlatform {
     }
     pluginVerification {
         failureLevel = VerifyPluginTask.FailureLevel.ALL.filterNot { it == VerifyPluginTask.FailureLevel.EXPERIMENTAL_API_USAGES }
-        ides { current() }
+        ides {
+            current()
+            // -PverifyEap also checks the next WebStorm EAP (APIs scheduled for removal show up there first).
+            if (providers.gradleProperty("verifyEap").isPresent) {
+                select {
+                    types = listOf(IntelliJPlatformType.WebStorm)
+                    channels = listOf(ProductRelease.Channel.EAP)
+                    sinceBuild = "263"
+                }
+            }
+        }
     }
 }
