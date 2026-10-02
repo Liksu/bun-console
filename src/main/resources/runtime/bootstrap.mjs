@@ -1,7 +1,7 @@
 import repl from "node:repl";
 import vm from "node:vm";
 import net from "node:net";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { PassThrough, Writable } from "node:stream";
 import { Console } from "node:console";
 import { StringDecoder } from "node:string_decoder";
@@ -142,6 +142,29 @@ for (const name of builtinModules) {
   }
 }
 // Globals that exist before any console input; later ones are the user's (for completion).
+// Dynamic import() in console input (rewritten to $bcImp by the IDE) resolves like a
+// static import there: relative to the context file or the project folder, not to
+// the REPL's internals. A bare file name gets a hint instead of "Cannot find package".
+Object.defineProperty(globalThis, "$bcImp", {
+  configurable: false, enumerable: false, writable: false,
+  value(specifier, options) {
+    const base = currentFile ? dirname(resolve(currentFile)) : process.cwd();
+    let target = specifier;
+    if (typeof specifier === "string" && !/^[a-z][a-z0-9+.-]*:/i.test(specifier)) {
+      try {
+        const resolved = Bun.resolveSync(specifier, base);
+        target = isAbsolute(resolved) ? pathToFileURL(resolved).href : resolved;
+      } catch (error) {
+        if (!specifier.startsWith(".") && !isAbsolute(specifier) && existsSync(resolve(base, specifier))) {
+          const where = currentFile ? `next to ${basename(currentFile)}` : "in the project folder";
+          return Promise.reject(new Error(`Cannot find package '${specifier}'. To import the file ${where}, write './${specifier}'`));
+        }
+        return Promise.reject(error);
+      }
+    }
+    return options === undefined ? import(target) : import(target, options);
+  },
+});
 const baselineGlobals = new Set(Object.getOwnPropertyNames(globalThis));
 const IDENTIFIER = /^[$_\p{ID_Start}][$\u200c\u200d\p{ID_Continue}]*$/u;
 const bindings = new Map();
@@ -222,7 +245,20 @@ function userGlobals() {
   return names;
 }
 
+// A module namespace prints as "Module { … }", as in DevTools, instead of util.inspect's
+// "Module <[Object: null prototype] {}> [Module] { … }".
+function moduleView(value) {
+  if (Object.prototype.toString.call(value) !== "[object Module]") return undefined;
+  const view = {};
+  for (const key of Object.keys(value)) {
+    try { view[key] = value[key]; } catch { view[key] = Symbol.for("<uninitialized>"); }
+  }
+  return view;
+}
+
 function render(value) {
+  const module = moduleView(value);
+  if (module) return "Module " + render(module);
   try {
     return formatAny(value, (options) => inspect(value, { ...options, customInspect: false }));
   } catch (error) { return `[Uninspectable value: ${formatError(error)}]`; }

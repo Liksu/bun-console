@@ -23,6 +23,12 @@ browser developer console, it will feel familiar.</p>
 Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
 ]]></description>
     <change-notes><![CDATA[
+<p>0.2.3</p>
+<ul>
+  <li>Dynamic <code>import()</code> in the console resolves relative paths from the context file,
+      like static imports; <code>import('b.ts')</code> suggests <code>'./b.ts'</code>.</li>
+  <li>Module namespaces print as <code>Module { … }</code>.</li>
+</ul>
 <p>0.2.2</p>
 <ul>
   <li>The console does nothing until you use it: a tool window restored with the project no longer

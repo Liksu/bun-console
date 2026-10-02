@@ -1,5 +1,6 @@
 package dev.bunconsole.runtime
 
+import com.intellij.lang.ecmascript6.psi.ES6ImportCall
 import com.intellij.lang.ecmascript6.psi.ES6ImportDeclaration
 import com.intellij.lang.javascript.psi.JSLiteralExpression
 import com.intellij.lang.javascript.psi.JSVarStatement
@@ -23,10 +24,19 @@ object ConsoleImports {
         val declarations = file.children.filterIsInstance<ES6ImportDeclaration>()
         val variables = file.children.filterIsInstance<JSVarStatement>()
         val classes = file.children.filterIsInstance<JSClass>()
-        if (declarations.isEmpty() && variables.isEmpty() && classes.isEmpty()) return Evaluation(source, emptyList())
+        val dynamicImports = PsiTreeUtil.findChildrenOfType(file, ES6ImportCall::class.java)
+        if (declarations.isEmpty() && variables.isEmpty() && classes.isEmpty() && dynamicImports.isEmpty()) {
+            return Evaluation(source, emptyList())
+        }
         val error = PsiTreeUtil.findChildOfType(file, PsiErrorElement::class.java)
         require(error == null) { "Invalid JavaScript: ${error?.errorDescription}" }
         val executable = source.toCharArray()
+        // `import(…)` becomes the runtime's `$bcImp(…)` (same length, so error positions stay):
+        // it resolves relative paths from the context file, as static imports in the console do.
+        for (call in dynamicImports) {
+            val start = call.textRange.startOffset
+            if (source.startsWith("import", start)) "\$bcImp".forEachIndexed { index, char -> executable[start + index] = char }
+        }
         val declared = mutableMapOf<String, Boolean>()
         for (statement in variables) {
             val lexical = statement.text.startsWith("const") || statement.text.startsWith("let")

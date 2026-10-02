@@ -27,7 +27,8 @@ class ConsoleImportsTest : BasePlatformTestCase() {
         val source = "// import fake from 'nope'\nconst s = \"import path from 'path'\"; await import('node:path')"
         val result = ConsoleImports.prepare(project, source)
         assertTrue(result.imports.isEmpty())
-        assertEquals(source.replace("const s", "var   s"), result.code)
+        // Comments and strings stay as typed; only the real dynamic import goes through the runtime helper.
+        assertEquals(source.replace("const s", "var   s").replace("await import(", "await \$bcImp("), result.code)
     }
 
     fun testEscapedModuleSpecifierAndDefaultAlias() {
@@ -66,5 +67,11 @@ class ConsoleImportsTest : BasePlatformTestCase() {
         } catch (expected: IllegalArgumentException) {
             assertTrue(expected.message!!.contains("A"))
         }
+    }
+
+    fun testDynamicImportsResolveThroughTheRuntimeHelper() {
+        val prepared = ConsoleImports.prepare(project, "const m = await import('./b.ts'); import('x').then(String)")
+        assertEquals("var   m = await \$bcImp('./b.ts'); \$bcImp('x').then(String)", prepared.code)
+        assertTrue(prepared.imports.isEmpty())
     }
 }

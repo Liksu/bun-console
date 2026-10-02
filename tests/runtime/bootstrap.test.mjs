@@ -497,3 +497,23 @@ test("long arrays of primitives use the whole width; console.clear() asks the ID
     expect(runtime.stdout()).toContain("<clear>");
   } finally { await runtime.stop(); }
 }, 15000);
+
+test("dynamic import() resolves from the context file, hints at './' for bare file names, prints Module { … }", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "bun-console-dynamic-import-"));
+  mkdirSync(join(directory, "nested"));
+  const ide = (name) => join(directory, name).replaceAll("\\", "/");
+  writeFileSync(ide("nested/main.ts"), "export const main = 1;");
+  writeFileSync(ide("nested/sibling.ts"), "export const sibling = 'next to main';");
+  const runtime = await start();
+  const run = (code) => runtime.request("eval", { code, columns: 120 });
+  try {
+    await runtime.request("load", { path: ide("nested/main.ts") });
+    expect((await run("(await $bcImp('./sibling.ts')).sibling")).text).toBe("'next to main'");
+    await expect(run("await $bcImp('sibling.ts')")).rejects.toThrow("write './sibling.ts'");
+    expect((await run("await $bcImp('./sibling.ts')")).text).toBe("Module { sibling: 'next to main' }");
+    expect((await run("(await $bcImp('node:path')).basename('/a/b')")).text).toBe("'b'");
+  } finally {
+    await runtime.stop();
+    if (directory.startsWith(tmpdir())) rmSync(directory, { recursive: true, force: true });
+  }
+}, 15000);
