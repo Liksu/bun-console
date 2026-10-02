@@ -10,6 +10,17 @@
 
 ## Build and test
 
+On Windows, `test.bat` runs everything without any setup: it uses the Java bundled with WebStorm
+(`%WEBSTORM_PATH%`, default `%LOCALAPPDATA%\Programs\WebStorm`), runs the Bun runtime tests, then
+the IDE tests. Extra arguments go to Gradle:
+
+```bat
+test.bat
+test.bat --tests dev.bunconsole.ConsoleImportsTest
+```
+
+The same by hand:
+
 ```powershell
 $env:JAVA_HOME = "$env:LOCALAPPDATA\Programs\WebStorm\jbr"
 .\gradlew.bat -PwebstormPath="$env:LOCALAPPDATA\Programs\WebStorm" test buildPlugin verifyPlugin
