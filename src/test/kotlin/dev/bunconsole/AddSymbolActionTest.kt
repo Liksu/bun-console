@@ -3,7 +3,7 @@ package dev.bunconsole
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import dev.bunconsole.ui.AddSymbolAction
 
-class AddSymbolActionTest : BasePlatformTestCase() {
+class AddSymbolActionTest : ConsoleTestCase() {
     fun testExportedAndModuleLocalDeclarations() {
         val action = AddSymbolAction()
         val file = myFixture.configureByText("a.ts", """

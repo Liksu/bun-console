@@ -16,7 +16,7 @@ import dev.bunconsole.settings.BunConsoleSettings
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
-class BunLateBreakpointTest : BasePlatformTestCase() {
+class BunLateBreakpointTest : ConsoleTestCase() {
     fun testBreakpointAddedAfterConsoleReady() {
         val directory = Files.createTempDirectory("bun-console-late-breakpoint")
         val module = Files.writeString(directory.resolve("b.ts"), """

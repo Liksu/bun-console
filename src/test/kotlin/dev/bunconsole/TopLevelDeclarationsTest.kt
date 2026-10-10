@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
  * no progress indicator. Resolving imports in a TypeScript project (tsconfig.json)
  * needs one; this reproduces the "There is no ProgressIndicator or Job" report.
  */
-class TopLevelDeclarationsTest : BasePlatformTestCase() {
+class TopLevelDeclarationsTest : ConsoleTestCase() {
     fun testResolverWaitsWorkOnTheConsoleThreads() {
         // What the console did before: a plain read action on a plain thread. The JS resolver's
         // runBlockingCancellable fails there exactly as in the user's report.

@@ -19,12 +19,15 @@
 statements, highlighting, completion of runtime names, command history, and more files in
 context with <b>Add File to Bun Console</b> or <b>Add Symbol to Bun Console</b>. If you use the
 browser developer console, it will feel familiar.</p>
-<p>Requires Bun 1.4 or newer. Open <b>View | Tool Windows | Bun Console</b>.
+<p>Works in WebStorm and IntelliJ IDEA Ultimate. Requires Bun 1.4 or newer; the debugger also needs the
+Bun plugin (bundled with WebStorm). Open <b>View | Tool Windows | Bun Console</b>.
 Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
 ]]></description>
     <change-notes><![CDATA[
 <p>0.2.4</p>
 <ul>
+  <li>Works in IntelliJ IDEA Ultimate: the Bun plugin is no longer required; only the debugger needs it,
+      and the console explains how to get it.</li>
   <li>Finding Bun on PATH no longer uses an IDE API scheduled for removal (compatible with WebStorm 2026.3).</li>
 </ul>
 <p>0.2.3</p>
@@ -62,7 +65,6 @@ Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
 ]]></change-notes>
     <depends>com.intellij.modules.platform</depends>
     <depends>JavaScript</depends>
-    <depends>intellij.javascript.bun</depends>
     <dependencies><module name="intellij.platform.dap"/></dependencies>
     <extensions defaultExtensionNs="com.intellij">
         <platform.dap.launchArgumentsProvider implementation="dev.bunconsole.debug.ConsoleDapArgumentsProvider"/>

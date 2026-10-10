@@ -24,6 +24,9 @@ Without `-PwebstormPath`, Gradle downloads WebStorm 2026.2.3. The plugin archive
   debug adapter.
 - `bun test tests/runtime/bootstrap.test.mjs` tests the runtime script directly over its socket
   protocol (seconds).
+- `-PplatformType=IU` runs the same tests in IntelliJ IDEA Ultimate 2026.2.3 instead of WebStorm,
+  without the Bun plugin (IDEA does not bundle it), so the debugger tests are skipped there.
+  IDEA's licensing component fails headless; `ConsoleTestCase` ignores only that error in this run.
 - `verifyPlugin` runs Plugin Verifier against the target IDE. It must report *Compatible*; only
   the approved Experimental DAP usages may be listed (see [debugger-blocker.md](debugger-blocker.md)).
 

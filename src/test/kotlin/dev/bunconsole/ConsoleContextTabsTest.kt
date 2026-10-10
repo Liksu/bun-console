@@ -11,7 +11,7 @@ import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 import javax.swing.JPanel
 
-class ConsoleContextTabsTest : BasePlatformTestCase() {
+class ConsoleContextTabsTest : ConsoleTestCase() {
     fun testEachFileHasNativeTabButConsolePanelIsShared() {
         val directory = Files.createTempDirectory("bun-console-tabs")
         val file = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(

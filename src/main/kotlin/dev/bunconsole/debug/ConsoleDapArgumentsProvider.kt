@@ -23,10 +23,19 @@ class ConsoleDapArgumentsProvider : DapLaunchArgumentsProvider {
         executorId == DefaultDebugExecutor.EXECUTOR_ID && profile is ConsoleDebugProfile
 
     override fun getLaunchArguments(project: Project, profile: RunProfile): LaunchRequestArguments {
-        val adapter = DebugAdapterSupportProvider.EP_NAME.extensionList.firstOrNull { it.adapterId.type == "bun" }
-            ?: error("WebStorm's Bun debugger is unavailable. Enable the bundled Bun plugin.")
+        val adapter = bunAdapter() ?: error(BUN_DEBUGGER_MISSING)
         // The Bun adapter attaches to an already-running inspector URL.
         return LaunchRequestArguments(adapter.adapterId, DapStartRequest.Attach,
             mapOf("url" to (profile as ConsoleDebugProfile).inspectorUrl))
+    }
+
+    companion object {
+        const val BUN_DEBUGGER_MISSING = "The debugger needs the Bun plugin (bundled with WebStorm; " +
+            "in other IDEs install \"Bun\" from Settings | Plugins | Marketplace)"
+
+        private fun bunAdapter() = DebugAdapterSupportProvider.EP_NAME.extensionList.firstOrNull { it.adapterId.type == "bun" }
+
+        /** Whether the IDE has the Bun debug adapter (the Bun plugin) and the DAP facade it runs on. */
+        fun bunDebuggerAvailable(): Boolean = try { bunAdapter() != null } catch (_: LinkageError) { false }
     }
 }

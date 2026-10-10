@@ -27,6 +27,7 @@ import com.intellij.xdebugger.breakpoints.XLineBreakpoint
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.google.gson.JsonObject
 import dev.bunconsole.debug.BunDebugBridge
+import dev.bunconsole.debug.ConsoleDapArgumentsProvider
 import dev.bunconsole.debug.PausedFrameEvaluator
 import dev.bunconsole.debug.PausedFrameNames
 import dev.bunconsole.runtime.BunConsoleProcess
@@ -354,11 +355,18 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
         updateStatus("Starting Bun…")
         write("\n— Starting fresh runtime —\n")
         val selectedBun = BunConsoleSettings.getInstance().bunPath
+        // Without the Bun plugin there is no debug adapter: say so once and run without the debugger.
+        val debuggerAvailable = try { ConsoleDapArgumentsProvider.bunDebuggerAvailable() } catch (_: LinkageError) { false }
+        if (BunConsoleSettings.getInstance().debugEnabled && !debuggerFailed && !debuggerAvailable) {
+            debuggerFailed = true
+            write("${ConsoleDapArgumentsProvider.BUN_DEBUGGER_MISSING}. The console runs without the debugger.\n", true)
+        }
+        val useDebugger = BunConsoleSettings.getInstance().debugEnabled && !debuggerFailed
         val startup = CompletableFuture.supplyAsync({
             val executable = BunRuntimeLocator.locate(selectedBun)
             val script = BootstrapManager.materialize()
             val cwd = Path.of(project.basePath ?: System.getProperty("user.home"))
-            val bridge = if (BunConsoleSettings.getInstance().debugEnabled && !debuggerFailed) {
+            val bridge = if (useDebugger) {
                 BunDebugBridge(project,
                     { onEdt(epoch) { updateContextStatus() } },
                     { onEdt(epoch) {

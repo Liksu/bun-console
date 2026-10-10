@@ -15,7 +15,7 @@ import javax.swing.JTextField
 import javax.swing.JRadioButton
 import kotlin.test.assertFailsWith
 
-class BunConsoleSettingsTest : BasePlatformTestCase() {
+class BunConsoleSettingsTest : ConsoleTestCase() {
     fun testSettingsPersistValidateAndOnlyAffectTheNextRuntime() {
         assertFalse(BunConsoleSettings.Options().debugEnabled)
         val settings = BunConsoleSettings.getInstance()

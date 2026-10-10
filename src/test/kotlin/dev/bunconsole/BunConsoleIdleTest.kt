@@ -10,7 +10,7 @@ import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
 /** Nothing runs until the user works with the console; a hidden console does not follow the editor. */
-class BunConsoleIdleTest : BasePlatformTestCase() {
+class BunConsoleIdleTest : ConsoleTestCase() {
     fun testRuntimeStartsOnFirstUseAndHiddenConsoleDoesNotFollowTheEditor() {
         val directory = Files.createTempDirectory("bun-console-idle")
         val first = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(Files.writeString(directory.resolve("first.ts"), "export const one = 1;"))!!

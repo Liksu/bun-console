@@ -6,7 +6,7 @@ import dev.bunconsole.service.BunConsoleProjectService
 import dev.bunconsole.settings.BunConsoleSettings
 import java.util.concurrent.TimeUnit
 
-class BunConsoleBusyTest : BasePlatformTestCase() {
+class BunConsoleBusyTest : ConsoleTestCase() {
     fun testPendingCommandsDoNotBlockAndABusyThreadIsReported() {
         val settings = BunConsoleSettings.getInstance()
         val originalSettings = settings.state

@@ -35,7 +35,7 @@ import java.util.concurrent.TimeUnit
 import javax.swing.JComponent
 import javax.swing.KeyStroke
 
-class BunConsolePanelTest : BasePlatformTestCase() {
+class BunConsolePanelTest : ConsoleTestCase() {
     fun testInputHasJavaScriptPsiAndExecutesThroughItsAction() {
         val editors = FileEditorManager.getInstance(project)
         editors.openFiles.forEach { editors.closeFile(it) }

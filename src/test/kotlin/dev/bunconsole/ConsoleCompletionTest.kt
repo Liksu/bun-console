@@ -11,7 +11,7 @@ import dev.bunconsole.ui.ConsoleCompletionContributor
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
-class ConsoleCompletionTest : BasePlatformTestCase() {
+class ConsoleCompletionTest : ConsoleTestCase() {
     fun testTabCompletesRuntimeExportWithoutImportAndEvaluatesIt() {
         val directory = Files.createTempDirectory("bun-console-completion")
         val path = directory.resolve("a.ts")

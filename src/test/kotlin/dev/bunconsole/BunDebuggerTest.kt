@@ -18,7 +18,7 @@ import java.nio.file.Files
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
-class BunDebuggerTest : BasePlatformTestCase() {
+class BunDebuggerTest : ConsoleTestCase() {
     fun testBreakpointLocalsStepAndContinue() {
         val directory = Files.createTempDirectory("bun-console-debug-test")
         val module = Files.writeString(directory.resolve("debug-target.ts"), """

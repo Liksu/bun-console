@@ -11,7 +11,7 @@ import dev.bunconsole.ui.ConsoleInputHighlighting
 import dev.bunconsole.ui.ConsoleSyntaxPrinter
 import com.intellij.execution.ui.ConsoleViewContentType
 
-class ConsoleHighlightingTest : BasePlatformTestCase() {
+class ConsoleHighlightingTest : ConsoleTestCase() {
     fun testChainedMethodColors() {
         val fileType = FileTypeManager.getInstance().getFileTypeByExtension("js") as LanguageFileType
         val input = LanguageTextField(fileType.language, project, "", false)

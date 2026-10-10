@@ -11,7 +11,7 @@ import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
 /** Manual check 6: a file first loaded as another module's dependency still exposes its top-level names. */
-class DependencyDeclarationsTest : BasePlatformTestCase() {
+class DependencyDeclarationsTest : ConsoleTestCase() {
     fun testImportedFileKeepsUnexportedNamesWhenOpenedLater() {
         val directory = Files.createTempDirectory("bun-console-dependency-names")
         Files.writeString(directory.resolve("store.ts"), "const items: string[] = [];\nexport function add(item: string) { return items.push(item); }")

@@ -9,7 +9,7 @@ import dev.bunconsole.settings.BunConsoleSettings
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
-class BunConsoleDeclarationsTest : BasePlatformTestCase() {
+class BunConsoleDeclarationsTest : ConsoleTestCase() {
     fun testUnexportedTopLevelDeclarationsOfTheEditorFileAreCallable() {
         val directory = Files.createTempDirectory("bun-console-declarations")
         val path = Files.writeString(directory.resolve("tools.ts"), """

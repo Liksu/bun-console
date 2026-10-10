@@ -19,7 +19,7 @@ import dev.bunconsole.settings.BunConsoleSettings
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
-class BunDebuggerModuleInitializationTest : BasePlatformTestCase() {
+class BunDebuggerModuleInitializationTest : ConsoleTestCase() {
     fun testExportIsInitializedBeforeCallingFunctionAtBreakpoint() {
         val directory = Files.createTempDirectory("bun-console-debug-init")
         val module = Files.writeString(directory.resolve("b.ts"), """

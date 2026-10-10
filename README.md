@@ -60,9 +60,9 @@ If you have used the developer console of a browser, most of it will feel famili
 
 | Component | Requirement |
 | --- | --- |
-| IDE | WebStorm 2026.2 or newer (other IntelliJ-based IDEs with the JavaScript and Bun plugins may work, but are not tested) |
-| Runtime | [Bun](https://bun.sh/docs/installation) 1.4 or newer |
-| Debugger (optional) | A Node.js interpreter configured in WebStorm — the bundled Bun debug adapter runs on Node.js |
+| IDE | WebStorm or IntelliJ IDEA Ultimate 2026.2 or newer (tested); other JetBrains IDEs with JavaScript support should work too |
+| Runtime | [Bun](https://bun.sh/docs/installation) 1.4 or newer — console code runs on it |
+| Debugger (optional) | The **Bun** plugin (bundled with WebStorm; in IntelliJ IDEA install it from *Settings → Plugins → Marketplace*) and a Node.js interpreter configured in the IDE — the Bun debug adapter runs on Node.js |
 
 ## Installation
 
@@ -315,6 +315,9 @@ own runtime.
 an IDE started from the Dock sees your shell's `PATH` only if the shell profile exports it.
 
 **"Bun Console requires Bun 1.4 or newer."** Run `bun upgrade`.
+
+**"The debugger needs the Bun plugin".** WebStorm bundles it; in IntelliJ IDEA and other IDEs
+install **Bun** from *Settings → Plugins → Marketplace*. The console itself works without it.
 
 **The debugger does not attach.** The Bun debug adapter needs a Node.js interpreter: set one in
 *Settings → Languages & Frameworks → Node.js*. If attaching still fails, the console reports it

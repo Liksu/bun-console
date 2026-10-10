@@ -3,7 +3,7 @@ package dev.bunconsole
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import dev.bunconsole.runtime.ConsoleImports
 
-class ConsoleImportsTest : BasePlatformTestCase() {
+class ConsoleImportsTest : ConsoleTestCase() {
     fun testDefaultNamedNamespaceSideEffectAndNoSemicolonImports() {
         val source = """
             import path from 'path'

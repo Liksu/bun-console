@@ -13,7 +13,7 @@ import dev.bunconsole.ui.ConsoleCompletionContributor
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
-class ConsoleStaleCompletionTest : BasePlatformTestCase() {
+class ConsoleStaleCompletionTest : ConsoleTestCase() {
     fun testChangedFileRefreshesWithoutResetAndDependencyRequestsRestart() {
         val directory = Files.createTempDirectory("bun-console-stale")
         val dependencyPath = Files.writeString(directory.resolve("dependency.ts"), "export const dependent = 'old';")

@@ -19,7 +19,7 @@ import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
 /** A program the user debugs (not the console's own runtime) pauses; console input evaluates in its frame. */
-class ExternalPausedSessionTest : BasePlatformTestCase() {
+class ExternalPausedSessionTest : ConsoleTestCase() {
     fun testInputEvaluatesInThePausedFrameOfAnotherJavaScriptSession() {
         val directory = Files.createTempDirectory("bun-console-external-pause")
         val module = Files.writeString(directory.resolve("app.ts"), """

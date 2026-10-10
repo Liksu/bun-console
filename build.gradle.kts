@@ -16,12 +16,22 @@ repositories {
     intellijPlatform { defaultRepositories() }
 }
 
+// -PplatformType=IU builds and tests against IntelliJ IDEA Ultimate instead of WebStorm.
+val testIdea = providers.gradleProperty("platformType").orNull == "IU"
+val platformPrefix = if (testIdea) "IU" else "WS"
+
 dependencies {
     intellijPlatform {
         val idePath = providers.gradleProperty("webstormPath")
-        if (idePath.isPresent) local(idePath.get()) else webstorm("2026.2.3")
+        when {
+            testIdea -> create(IntelliJPlatformType.IntellijIdeaUltimate, "2026.2.3")
+            idePath.isPresent -> local(idePath.get())
+            else -> webstorm("2026.2.3")
+        }
         bundledPlugin("JavaScript")
-        bundledPlugin("intellij.javascript.bun")
+        // The Bun plugin is optional at runtime (only the debugger uses its adapter); IntelliJ IDEA
+        // does not bundle it, so the IDEA test run goes without it, like a user's IDEA would.
+        if (!testIdea) bundledPlugin("intellij.javascript.bun")
         bundledModule("intellij.platform.dap")
         testFramework(TestFrameworkType.Platform)
     }
@@ -49,9 +59,16 @@ tasks.test {
     maxParallelForks = 1
     // Same development trace as runIde, to diagnose failing IDE tests.
     systemProperty("bun.console.trace", layout.buildDirectory.file("bun-console-trace-test.log").get().asFile.absolutePath)
+    systemProperty("bun.console.testIdea", testIdea.toString())
+    // Without the Bun plugin (IntelliJ IDEA) there is no debug adapter to test.
+    if (testIdea) filter {
+        excludeTestsMatching("dev.bunconsole.BunDebugger*")
+        excludeTestsMatching("dev.bunconsole.BunLateBreakpointTest")
+        excludeTestsMatching("dev.bunconsole.ExternalPausedSessionTest")
+    }
     doFirst {
         // Live Edit has an incomplete headless fixture in this IDE installation.
-        val disabled = layout.buildDirectory.file("isolated-ide/${rootProject.name}/WS-2026.2.3/config-test/disabled_plugins.txt").get().asFile
+        val disabled = layout.buildDirectory.file("isolated-ide/${rootProject.name}/$platformPrefix-2026.2.3/config-test/disabled_plugins.txt").get().asFile
         disabled.parentFile.mkdirs()
         val liveEdit = "com.intellij.plugins.html.instantEditing"
         if (!disabled.exists() || liveEdit !in disabled.readLines()) disabled.appendText("$liveEdit\n")

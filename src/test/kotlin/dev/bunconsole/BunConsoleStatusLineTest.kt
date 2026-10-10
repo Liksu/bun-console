@@ -9,7 +9,7 @@ import dev.bunconsole.ui.BunConsolePanel
 import java.util.concurrent.TimeUnit
 
 /** The status must be visible in the panel itself, not only in the service. */
-class BunConsoleStatusLineTest : BasePlatformTestCase() {
+class BunConsoleStatusLineTest : ConsoleTestCase() {
     fun testRunningAndBusyStatesAreShownAboveTheInput() {
         val settings = BunConsoleSettings.getInstance()
         val originalSettings = settings.state

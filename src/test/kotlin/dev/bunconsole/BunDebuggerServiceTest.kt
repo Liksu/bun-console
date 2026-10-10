@@ -16,7 +16,7 @@ import dev.bunconsole.settings.BunConsoleSettings
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
-class BunDebuggerServiceTest : BasePlatformTestCase() {
+class BunDebuggerServiceTest : ConsoleTestCase() {
     fun testConsoleRoutesPausedInputRestartsAndSurvivesDebuggerStop() {
         val directory = Files.createTempDirectory("bun-console-debug-service")
         val module = Files.writeString(directory.resolve("service-target.ts"), """

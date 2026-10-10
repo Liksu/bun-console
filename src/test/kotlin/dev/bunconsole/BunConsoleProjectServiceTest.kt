@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit
 import dev.bunconsole.service.BunConsoleProjectService
 import dev.bunconsole.settings.BunConsoleSettings
 
-class BunConsoleProjectServiceTest : BasePlatformTestCase() {
+class BunConsoleProjectServiceTest : ConsoleTestCase() {
     fun testCurrentFilePinRestartAndPersistentHistory() {
         val directory = Files.createTempDirectory("bun-console-project-fixture")
         val a = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(Files.writeString(directory.resolve("a.ts"), "export function twice(x: number) { return x; }"))!!
