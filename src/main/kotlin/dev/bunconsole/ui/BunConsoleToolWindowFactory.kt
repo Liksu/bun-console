@@ -7,7 +7,9 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
+import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.icons.AllIcons
 import dev.bunconsole.service.BunConsoleProjectService
@@ -20,10 +22,18 @@ class BunConsoleToolWindowFactory : ToolWindowFactory, DumbAware {
             override fun actionPerformed(event: AnActionEvent) { service.restart() }
         }
         val debugger = DebuggerToggleAction(project, service)
+        // Title bar: [debugger] [restart, when needed] | [scroll to the end] [clear] — then the ⋮ menu.
+        var outputActions = emptyList<AnAction>()
+        fun updateTitleActions() {
+            val runtime = if (service.restartRequired || service.blocked) listOf(debugger, restart) else listOf(debugger)
+            toolWindow.setTitleActions(runtime + Separator.getInstance() + outputActions)
+        }
         val panel = BunConsolePanel(project) {
             tabs.refresh()
-            toolWindow.setTitleActions(if (service.restartRequired || service.blocked) listOf(debugger, restart) else listOf(debugger))
+            updateTitleActions()
         }
+        outputActions = panel.outputActions
+        updateTitleActions()
         Disposer.register(toolWindow.contentManager, panel)
         // While the tool window is hidden, the console neither starts nor follows the editor.
         project.messageBus.connect(toolWindow.disposable).subscribe(ToolWindowManagerListener.TOPIC, object : ToolWindowManagerListener {

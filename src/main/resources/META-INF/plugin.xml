@@ -3,8 +3,8 @@
     <name>Bun Console</name>
     <vendor url="https://github.com/Liksu">Petro Borshchahivskyi</vendor>
     <description><![CDATA[
-<p>Interactive console for JavaScript and TypeScript code of your project, running on
-<a href="https://bun.sh">Bun</a>.</p>
+<p>Interactive console (REPL) for JavaScript and TypeScript code of your project, running on
+<a href="https://bun.sh">Bun</a>: a playground where the code you are editing is ready to call.</p>
 <ul>
   <li><b>Call your code directly.</b> Functions, classes and variables of the file open in the
       editor are available by name, exported or not, with no imports.</li>
@@ -26,6 +26,8 @@ Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
     <change-notes><![CDATA[
 <p>0.2.4</p>
 <ul>
+  <li>Scroll to the End and Clear Output buttons in the console's title bar.</li>
+  <li>Find Action (Ctrl+Shift+A) finds the console as "JavaScript Console", "TypeScript Console" or "REPL".</li>
   <li>Works in IntelliJ IDEA Ultimate: the Bun plugin is no longer required; only the debugger needs it,
       and the console explains how to get it.</li>
   <li>Finding Bun on PATH no longer uses an IDE API scheduled for removal (compatible with WebStorm 2026.3).</li>
@@ -94,6 +96,13 @@ Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
         <action id="dev.bunconsole.AddSymbol" class="dev.bunconsole.ui.AddSymbolAction"
                 text="Add Symbol to Bun Console" description="Import this module export into Bun Console">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
+        <action id="dev.bunconsole.Open" class="dev.bunconsole.ui.OpenConsoleAction"
+                text="Open Bun Console" description="Open the JavaScript and TypeScript console">
+            <synonym text="JavaScript Console"/>
+            <synonym text="TypeScript Console"/>
+            <synonym text="JS REPL"/>
+            <synonym text="TypeScript REPL"/>
         </action>
         <action id="dev.bunconsole.RunInput" class="com.intellij.openapi.actionSystem.EmptyAction"
                 text="Run Bun Console Input" description="Execute the input in Bun Console">

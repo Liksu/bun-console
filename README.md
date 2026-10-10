@@ -93,8 +93,8 @@ bun --version
    }
    ```
 
-2. Open the console: **View → Tool Windows → Bun Console**, or click its `>` button on the
-   bottom tool-window bar.
+2. Open the console: **View → Tool Windows → Bun Console**, click its `>` button on the bottom
+   tool-window bar, or find it with *Find Action* (Ctrl+Shift+A) as "JavaScript Console" or "REPL".
 3. Type an expression and press **Ctrl+Enter**:
 
    ```js
@@ -135,8 +135,9 @@ The run shortcut can be changed in *Settings → Keymap → Run Bun Console Inpu
 - **Top-level `await`** works: `await fetch("https://example.com").then(r => r.status)`.
 - **History** keeps the last 500 commands. A recalled command can be edited before running it.
   Moving down past the newest command brings back the text you were typing.
-- **Clear Output** (⋮ menu) or `console.clear()` empties the transcript but keeps variables,
-  history and input.
+- **Scroll to the End** and **Clear Output** are buttons in the console's title bar; Clear Output
+  (also in the ⋮ menu) or `console.clear()` empties the transcript but keeps variables, history
+  and input.
 - **Restart Runtime** (⋮ menu) starts a fresh Bun process: variables are reset, the transcript,
   history and file contexts stay. Earlier commands are never replayed.
 

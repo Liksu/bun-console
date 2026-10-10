@@ -6,6 +6,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.ToggleAction
@@ -92,6 +93,19 @@ class BunConsolePanel(private val project: Project, statusChanged: (String) -> U
 
     private val runInput = command("Run Input", "Execute the console input", { input.text.isNotBlank() }) { execute() }
     private val noShortcut = command("", "") {}
+    /**
+     * Output actions for the title bar: the console's own "Scroll to the End" action (as in the
+     * Run tool window) and Clear Output, which also stays in the ⋮ menu.
+     */
+    val outputActions: List<AnAction> by lazy {
+        val scrollToEnd = output.createConsoleActions().firstOrNull { it.templatePresentation.icon == AllIcons.RunConfigurations.Scroll_down }
+        val clear = object : DumbAwareAction("Clear Output", "Clear output; keep variables, input and command history", AllIcons.Actions.GC) {
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+            override fun actionPerformed(event: AnActionEvent) { if (!disposed && !project.isDisposed) service.clearOutput() }
+        }
+        listOfNotNull(scrollToEnd, clear)
+    }
+
     val menuActions = DefaultActionGroup().apply {
         add(runInput)
         addSeparator()

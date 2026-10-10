@@ -43,6 +43,10 @@ class BunConsolePanelTest : ConsoleTestCase() {
         val service = project.getService(BunConsoleProjectService::class.java)
         try {
             val menu = panel.menuActions.getChildren(null)
+            // Title bar: the console's own "Scroll to the End" action and Clear Output.
+            assertEquals(2, panel.outputActions.size)
+            assertSame(com.intellij.icons.AllIcons.RunConfigurations.Scroll_down, panel.outputActions[0].templatePresentation.icon)
+            assertEquals("Clear Output", panel.outputActions[1].templatePresentation.text)
             val runInput = menu.single { it.templatePresentation.text == "Run Input" }
             val actionContext = SimpleDataContext.builder().add(CommonDataKeys.PROJECT, project).build()
             fun event(action: com.intellij.openapi.actionSystem.AnAction) = AnActionEvent.createEvent(
