@@ -142,7 +142,29 @@ The run shortcut can be changed in *Settings → Keymap → Run Bun Console Inpu
   history and file contexts stay. Earlier commands are never replayed.
 
 The console input is JavaScript. TypeScript files are loaded and debugged normally, but type
-annotations typed into the console itself are not supported.
+annotations typed into the console itself are not supported (code you run from a TypeScript file
+with **Run Selection** may have them, see below).
+
+### Running a file or a selection
+
+Two buttons in the console's title bar (also in the editor's context menu) run code straight from
+the editor:
+
+| Button | What runs |
+| --- | --- |
+| **Run File** (▶) | the whole file in the editor, as a program: its top-level code runs again *now*, its output appears in the console, and its module is printed: `[4] Module { runs: 2, … }` |
+| **Run Selection** (calculator) | the code selected in the editor, exactly as if you typed it into the console: it gets a number, goes into the history, and its declarations stay |
+
+- **Run File** saves the file first. Console variables are kept, and the file's names in the
+  console now read the new run. The files it imports are not run again (Restart Runtime for that).
+  Unlike the console's lazy loading, this always executes the file, top-level `await` included —
+  that is the point of the button. It also runs a file from the *Project* view's context menu.
+- **Run Selection** compiles code selected in a TypeScript (or JSX) file to JavaScript first, so
+  type annotations, `as`, generics and enums work. While a debugged program is paused, the
+  selection is evaluated in its stack frame, like any console input (there types are not compiled).
+- The buttons are disabled when there is nothing to run: no JavaScript/TypeScript file in the
+  editor, or no selection. Shortcuts can be assigned in *Settings → Keymap* ("Run File in Bun
+  Console", "Run Selection in Bun Console").
 
 ## Your files as the console context
 

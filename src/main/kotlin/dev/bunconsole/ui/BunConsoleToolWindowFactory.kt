@@ -7,6 +7,7 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
+import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.Separator
@@ -22,11 +23,12 @@ class BunConsoleToolWindowFactory : ToolWindowFactory, DumbAware {
             override fun actionPerformed(event: AnActionEvent) { service.restart() }
         }
         val debugger = DebuggerToggleAction(project, service)
-        // Title bar: [debugger] [restart, when needed] | [scroll to the end] [clear] — then the ⋮ menu.
+        val runActions = listOf("dev.bunconsole.RunFile", "dev.bunconsole.RunSelection").mapNotNull(ActionManager.getInstance()::getAction)
+        // Title bar: [debugger] [restart, when needed] | [run file] [run selection] | [scroll to the end] [clear] — then the ⋮ menu.
         var outputActions = emptyList<AnAction>()
         fun updateTitleActions() {
             val runtime = if (service.restartRequired || service.blocked) listOf(debugger, restart) else listOf(debugger)
-            toolWindow.setTitleActions(runtime + Separator.getInstance() + outputActions)
+            toolWindow.setTitleActions(runtime + Separator.getInstance() + runActions + Separator.getInstance() + outputActions)
         }
         val panel = BunConsolePanel(project) {
             tabs.refresh()

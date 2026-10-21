@@ -12,8 +12,10 @@
       you debug is paused, the console evaluates in the selected stack frame.</li>
   <li><b>Iterate freely.</b> Variables persist between commands, and <code>const</code>,
       <code>let</code> and <code>class</code> can be declared again as you refine a snippet.</li>
+  <li><b>Run a file or a selection.</b> One click runs the whole file in the editor, or the code you
+      selected (TypeScript too), in the console.</li>
   <li><b>Safe by default.</b> Switching editor tabs never runs code: a file runs only when the
-      console first uses it. Uncaught errors are printed, never fatal.</li>
+      console first uses it or you run it. Uncaught errors are printed, never fatal.</li>
 </ul>
 <p>Also: top-level <code>await</code> that never blocks the console, <code>import</code>
 statements, highlighting, completion of runtime names, command history, and more files in
@@ -26,6 +28,9 @@ Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
     <change-notes><![CDATA[
 <p>0.2.4</p>
 <ul>
+  <li>Run File: runs the whole file in the editor again and prints its module; Run Selection: runs the
+      selected code as console input, TypeScript included. Both are buttons in the console's title bar
+      and commands in the editor's context menu.</li>
   <li>Scroll to the End and Clear Output buttons in the console's title bar.</li>
   <li>Find Action (Ctrl+Shift+A) finds the console as "JavaScript Console", "TypeScript Console" or "REPL".</li>
   <li>Works in IntelliJ IDEA Ultimate: the Bun plugin is no longer required; only the debugger needs it,
@@ -95,6 +100,17 @@ Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
         </action>
         <action id="dev.bunconsole.AddSymbol" class="dev.bunconsole.ui.AddSymbolAction"
                 text="Add Symbol to Bun Console" description="Import this module export into Bun Console">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
+        <action id="dev.bunconsole.RunFile" class="dev.bunconsole.ui.RunFileAction"
+                text="Run File in Bun Console" description="Run the whole file in Bun Console and print its module"
+                icon="AllIcons.Actions.Execute">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+        <action id="dev.bunconsole.RunSelection" class="dev.bunconsole.ui.RunSelectionAction"
+                text="Run Selection in Bun Console" description="Run the selected code as console input"
+                icon="AllIcons.Debugger.EvaluateExpression">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </action>
         <action id="dev.bunconsole.Open" class="dev.bunconsole.ui.OpenConsoleAction"

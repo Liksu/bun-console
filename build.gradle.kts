@@ -60,6 +60,9 @@ tasks.test {
     // Same development trace as runIde, to diagnose failing IDE tests.
     systemProperty("bun.console.trace", layout.buildDirectory.file("bun-console-trace-test.log").get().asFile.absolutePath)
     systemProperty("bun.console.testIdea", testIdea.toString())
+    // winp (used to end process trees) unpacks its helpers next to the IDE by default, which is
+    // Gradle's immutable copy of the IDE: the next build would refuse to use the modified copy.
+    systemProperty("winp.folder.preferred", layout.buildDirectory.dir("winp").get().asFile.absolutePath)
     // Without the Bun plugin (IntelliJ IDEA) there is no debug adapter to test.
     if (testIdea) filter {
         excludeTestsMatching("dev.bunconsole.BunDebugger*")

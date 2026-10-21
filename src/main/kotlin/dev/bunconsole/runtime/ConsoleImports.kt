@@ -17,20 +17,29 @@ object ConsoleImports {
     data class Import(val specifier: String, val bindings: List<Binding>)
     data class Evaluation(val code: String, val imports: List<Import>, val declarations: List<String> = emptyList())
 
-    fun prepare(project: Project, source: String): Evaluation {
+    private val TYPE_ONLY_IMPORT = Regex("""^import\s+type\s+(?!from\b)""")
+    private val TYPE_ONLY_SPECIFIER = Regex("""^type\s+(?!as\b)""")
+
+    /** [extension] is the language of [source]: "js", or "ts", "tsx" and "jsx" for code selected in such a file. */
+    fun prepare(project: Project, source: String, extension: String = "js"): Evaluation {
         val file = PsiFileFactory.getInstance(project).createFileFromText(
-            "bun-console.js", FileTypeManager.getInstance().getFileTypeByExtension("js"), source
+            "bun-console.$extension", FileTypeManager.getInstance().getFileTypeByExtension(extension), source
         )
-        val declarations = file.children.filterIsInstance<ES6ImportDeclaration>()
+        val allDeclarations = file.children.filterIsInstance<ES6ImportDeclaration>()
+        // TypeScript type imports have nothing to import at runtime; the compiler removes them.
+        val typeImports = allDeclarations.filter { TYPE_ONLY_IMPORT.containsMatchIn(it.text) }
+        val declarations = allDeclarations - typeImports.toSet()
         val variables = file.children.filterIsInstance<JSVarStatement>()
-        val classes = file.children.filterIsInstance<JSClass>()
+        // TypeScript interfaces and enums are JSClass too, as are abstract classes; only plain classes become expressions.
+        val classes = file.children.filterIsInstance<JSClass>().filter { it.text.startsWith("class") }
         val dynamicImports = PsiTreeUtil.findChildrenOfType(file, ES6ImportCall::class.java)
-        if (declarations.isEmpty() && variables.isEmpty() && classes.isEmpty() && dynamicImports.isEmpty()) {
+        if (allDeclarations.isEmpty() && variables.isEmpty() && classes.isEmpty() && dynamicImports.isEmpty()) {
             return Evaluation(source, emptyList())
         }
         val error = PsiTreeUtil.findChildOfType(file, PsiErrorElement::class.java)
-        require(error == null) { "Invalid JavaScript: ${error?.errorDescription}" }
+        require(error == null) { "Invalid ${if (extension.startsWith("ts")) "TypeScript" else "JavaScript"}: ${error?.errorDescription}" }
         val executable = source.toCharArray()
+        for (declaration in typeImports) blank(executable, declaration.textRange.startOffset, declaration.textRange.endOffset)
         // `import(…)` becomes the runtime's `$bcImp(…)` (same length, so error positions stay):
         // it resolves relative paths from the context file, as static imports in the console do.
         for (call in dynamicImports) {
@@ -79,21 +88,26 @@ object ConsoleImports {
             }
             val bindings = declaration.importedBindings.map {
                 Binding(if (it.isNamespaceImport) "*" else "default", requireNotNull(it.name) { "Missing imported binding name: ${it.text}" })
-            } + declaration.importSpecifiers.map {
+            } + declaration.importSpecifiers.filterNot { TYPE_ONLY_SPECIFIER.containsMatchIn(it.text) }.map {
                 val imported = requireNotNull(it.referenceName) { "Missing specifier name: ${it.text}" }
                 Binding(imported, it.alias?.name ?: imported)
             }
-            // Keep line/column offsets in runtime errors; the user's source/transcript is untouched.
-            for (index in declaration.textRange.startOffset until declaration.textRange.endOffset) {
-                if (executable[index] != '\n' && executable[index] != '\r') executable[index] = ' '
-            }
-            // Preserve the statement boundary: removing a middle import must not
-            // join the expressions before/after it through automatic semicolons.
-            executable[declaration.textRange.startOffset] = ';'
+            blank(executable, declaration.textRange.startOffset, declaration.textRange.endOffset)
             Import(specifier, bindings)
         }
         val code = StringBuilder(String(executable))
         for ((offset, text) in insertions.sortedByDescending { it.first }) code.insert(offset, text)
         return Evaluation(code.toString(), imports, declared.keys.toList())
+    }
+
+    /** Removes an import statement from the executable code. */
+    private fun blank(executable: CharArray, start: Int, end: Int) {
+        // Keep line/column offsets in runtime errors; the user's source/transcript is untouched.
+        for (index in start until end) {
+            if (executable[index] != '\n' && executable[index] != '\r') executable[index] = ' '
+        }
+        // Preserve the statement boundary: removing a middle import must not
+        // join the expressions before/after it through automatic semicolons.
+        executable[start] = ';'
     }
 }

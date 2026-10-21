@@ -517,3 +517,50 @@ test("dynamic import() resolves from the context file, hints at './' for bare fi
     if (directory.startsWith(tmpdir())) rmSync(directory, { recursive: true, force: true });
   }
 }, 15000);
+
+test("Run File runs the file's top-level code again; console names read the new run", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "bun-console-run-file-"));
+  const ide = (name) => join(directory, name).replaceAll("\\", "/");
+  writeFileSync(ide("dependency.ts"), "globalThis.dependencyRuns = (globalThis.dependencyRuns ?? 0) + 1;\nexport const base = 10;");
+  writeFileSync(ide("main.ts"), "import { base } from './dependency';\n" +
+    "globalThis.mainRuns = (globalThis.mainRuns ?? 0) + 1;\nconsole.log('main runs', globalThis.mainRuns);\n" +
+    "let hidden: number = base + globalThis.mainRuns;\nexport const runs = globalThis.mainRuns;");
+  writeFileSync(ide("waits.ts"), "await new Promise((resolve) => setTimeout(resolve, 50));\nexport const waited = true;");
+  const runtime = await start();
+  const run = (code) => runtime.request("eval", { code });
+  try {
+    await runtime.request("load", { path: ide("main.ts"), declared: ["hidden", "runs"] });
+    await run("var mine = 'kept'");
+    expect((await run("[runs, hidden].join()")).text).toBe("'1,11'");
+    const first = await runtime.request("run_file", { path: ide("main.ts"), declared: ["hidden", "runs"] });
+    expect(first.text).toBe("Module { hidden: 12, runs: 2 }");
+    expect(first.names).toEqual(["hidden", "runs"]);
+    expect(runtime.stdout()).toContain("main runs 2");
+    expect((await run("[runs, hidden, mine, globalThis.dependencyRuns].join()")).text).toBe("'2,12,kept,1'");
+    // A file outside the console context runs too, and may use top-level await.
+    expect((await runtime.request("run_file", { path: ide("waits.ts") })).text).toBe("Module { waited: true }");
+    // A file that no longer parses keeps its previous run.
+    writeFileSync(ide("main.ts"), "export const broken: number = ;");
+    await expect(runtime.request("run_file", { path: ide("main.ts") })).rejects.toThrow();
+    expect((await run("runs")).text).toBe("2");
+  } finally {
+    await runtime.stop();
+    if (directory.startsWith(tmpdir())) rmSync(directory, { recursive: true, force: true });
+  }
+}, 15000);
+
+test("code selected in a TypeScript file runs as console input once compiled", async () => {
+  const runtime = await start();
+  const run = (code, loader) => runtime.request("eval", { code, loader });
+  try {
+    expect((await run("var   total: number = 40 + 2;\ntotal as number", "ts")).text).toBe("42");
+    expect((await run("type P = { x: number };\nvar   p: P = { x: 1 };\np.x", "ts")).text).toBe("1");
+    expect((await run("enum Color { Red, Green }\nColor.Green", "ts")).text).toBe("1");
+    expect((await run("function id<T>(value: T): T { return value }\nid<string>('a')", "ts")).text).toBe("'a'");
+    expect((await run("var   r = await Promise.resolve(5) as number; r * 2", "ts")).text).toBe("10");
+    expect((await run("total")).text).toBe("42");
+    await expect(run("1", "python")).rejects.toThrow("Unknown language");
+  } finally {
+    await runtime.stop();
+  }
+}, 15000);

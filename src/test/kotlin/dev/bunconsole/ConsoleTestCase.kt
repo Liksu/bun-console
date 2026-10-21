@@ -2,6 +2,7 @@ package dev.bunconsole
 
 import com.intellij.openapi.application.AccessToken
 import com.intellij.testFramework.LoggedErrorProcessor
+import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.util.EnumSet
 
@@ -28,7 +29,22 @@ abstract class ConsoleTestCase : BasePlatformTestCase() {
     }
 
     override fun tearDown() {
-        try { super.tearDown() } finally { licensingErrors?.finish() }
+        try {
+            stopDebugAdapter()
+            super.tearDown()
+        } finally { licensingErrors?.finish() }
+    }
+
+    /**
+     * The Bun plugin's debug adapter is one Node.js server for the whole IDE, kept between debug
+     * sessions. It runs in the folder of the project that started it, which Windows cannot delete
+     * while it runs, so the test project's teardown would fail. Bun itself runs as bun.exe.
+     */
+    private fun stopDebugAdapter() {
+        val adapters = ProcessHandle.current().descendants()
+            .filter { it.info().command().orElse("").endsWith("node.exe", ignoreCase = true) }.toList()
+        adapters.forEach { it.destroyForcibly() }
+        PlatformTestUtil.waitWithEventsDispatching("Debug adapter did not exit", { adapters.none { it.isAlive } }, 10)
     }
 
     private companion object {

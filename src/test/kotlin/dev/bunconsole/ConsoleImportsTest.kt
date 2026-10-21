@@ -69,6 +69,19 @@ class ConsoleImportsTest : ConsoleTestCase() {
         }
     }
 
+    fun testTypeScriptSelectionsKeepTypesForTheCompilerAndDropTypeImports() {
+        val source = "import type { Shape } from './shapes';\nimport { type Point, distance } from './geometry';\n" +
+            "interface Local { x: number }\nenum Color { Red }\nconst total: number = distance({ x: 3, y: 4 });\n" +
+            "class Box { size: number = 1 }\ntotal"
+        val prepared = ConsoleImports.prepare(project, source, "ts")
+        assertEquals(listOf(ConsoleImports.Import("./geometry", listOf(ConsoleImports.Binding("distance", "distance")))), prepared.imports)
+        assertFalse(prepared.code, prepared.code.contains("Shape"))
+        assertTrue(prepared.code, prepared.code.contains("var   total: number = distance"))
+        assertTrue(prepared.code, prepared.code.contains("interface Local { x: number }\nenum Color { Red }"))
+        assertTrue(prepared.code, prepared.code.contains("var Box = class Box { size: number = 1 };"))
+        assertEquals(listOf("total", "Box"), prepared.declarations)
+    }
+
     fun testDynamicImportsResolveThroughTheRuntimeHelper() {
         val prepared = ConsoleImports.prepare(project, "const m = await import('./b.ts'); import('x').then(String)")
         assertEquals("var   m = await \$bcImp('./b.ts'); \$bcImp('x').then(String)", prepared.code)

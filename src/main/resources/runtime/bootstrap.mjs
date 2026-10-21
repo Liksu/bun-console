@@ -688,6 +688,37 @@ function removeFile(path) {
   return { removed: true };
 }
 
+/**
+ * Run File: the file's top-level code runs again now, like `bun file.ts`. Its
+ * dependencies keep their module state; console names of the file read the new run.
+ */
+async function runFile(path, declared) {
+  if (typeof path !== "string") throw new Error("Expected a file path");
+  const record = moduleRecord(path);
+  scanExports(path); // A file that no longer parses keeps the previous run.
+  exposeDeclarations(record, declared);
+  const source = readFileSync(path, "utf8");
+  forget(record);
+  // import(), not require(): a file may use top-level await.
+  const namespace = await import(record.moduleId);
+  record.namespace = namespace;
+  record.loadedSource ??= source;
+  reconcile(record);
+  const names = currentFile === path ? moduleNames(record).names : undefined;
+  return { text: render(namespace), globals: userGlobals(), names };
+}
+
+// Code selected in a TypeScript or JSX file runs as console input once compiled.
+// Dead code elimination stays off: it would drop the final expression whose value the console prints.
+const selectionTranspilers = new Map();
+function compileSelection(code, loader) {
+  if (loader == null) return code;
+  if (!["ts", "tsx", "jsx"].includes(loader)) throw new Error(`Unknown language: ${loader}`);
+  let transpiler = selectionTranspilers.get(loader);
+  if (!transpiler) selectionTranspilers.set(loader, transpiler = new Bun.Transpiler({ loader, deadCodeElimination: false }));
+  return transpiler.transformSync(code);
+}
+
 function loadCurrent(path, declared) {
   if (!path) {
     clearAutomaticFileBindings();
@@ -725,7 +756,12 @@ async function dispatch(request) {
         delete server.context[name];
         bindings.delete(name);
       }
-      return { [DEFERRED]: evaluate(request.code).then((value) => ({ text: render(value), globals: userGlobals() })) };
+      return { [DEFERRED]: evaluate(compileSelection(request.code, request.loader))
+        .then((value) => ({ text: render(value), globals: userGlobals() })) };
+    }
+    case "run_file": {
+      if (Number.isInteger(request.columns)) columns = Math.min(Math.max(request.columns, 40), 1000);
+      return await runFile(request.path, request.declared);
     }
     case "load": return loadCurrent(request.path, request.declared);
     case "add_symbol": return addSymbol(request.path, request.imported, request.local, request.declared);

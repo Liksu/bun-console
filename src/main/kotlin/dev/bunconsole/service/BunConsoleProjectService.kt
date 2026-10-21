@@ -58,7 +58,8 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
         val JAVASCRIPT_FRAME_EXTENSIONS = setOf("js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx", "vue", "svelte", "astro", "html", "htm")
     }
     private val background = Executors.newSingleThreadExecutor { task -> Thread(task, "Bun Console lifecycle").apply { isDaemon = true } }
-    enum class OutputKind { NORMAL, ERROR, WARNING, JAVASCRIPT, RESULT, CLEAR }
+    /** COMMAND starts a new command's transcript entry ("[n] > "). */
+    enum class OutputKind { NORMAL, ERROR, WARNING, COMMAND, JAVASCRIPT, RESULT, CLEAR }
     private data class Entry(val text: String, val kind: OutputKind, val styles: List<ConsoleStyle>)
     private val entries = mutableListOf<Entry>()
     private var append: ((String, OutputKind, List<ConsoleStyle>) -> Unit)? = null
@@ -413,7 +414,11 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
         loadContext(startup, epoch)
     }
 
-    fun execute(source: String, styles: List<ConsoleStyle> = emptyList()) {
+    /**
+     * Runs console input. [loader] ("ts", "tsx" or "jsx") compiles code selected in such a
+     * file to JavaScript first; console input itself is JavaScript.
+     */
+    fun execute(source: String, styles: List<ConsoleStyle> = emptyList(), loader: String? = null) {
         if (source.isBlank()) return
         if (ready == null) restart()
         ConsoleTrace.log("INPUT", source + (pausedSession()?.let { "   [paused frame: ${it.sessionName}]" } ?: ""))
@@ -421,7 +426,7 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
         val id = ++command
         history.add(source)
         if (history.size > 500) history.removeAt(0)
-        write("\n[$id] > ")
+        writeEntry("\n[$id] > ", OutputKind.COMMAND)
         writeEntry(source, OutputKind.JAVASCRIPT, styles)
         write("\n")
         val epoch = generation
@@ -438,27 +443,56 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
         val backend = contextReady ?: return
         running[id] = System.nanoTime()
         startBusyTimer()
-        backend.thenComposeAsync({
+        showResult(id, epoch, backend.thenComposeAsync({
             val evaluation = ReadAction.computeBlocking<ConsoleImports.Evaluation, RuntimeException> {
-                ConsoleImports.prepare(project, source)
+                ConsoleImports.prepare(project, source, loader ?: "js")
             }
             it.request("eval", mapOf("code" to evaluation.code, "imports" to evaluation.imports,
-                "declarations" to evaluation.declarations, "columns" to outputColumns))
-        }, background)
-            .whenComplete { result, error -> onEdt(epoch) {
-                running.remove(id)
-                result?.getAsJsonArray("globals")?.let { globals ->
-                    consoleNames = globals.map { it.asString }.toSet()
-                    refreshCompletionNames()
-                }
-                if (error != null) write("[$id] ${message(error)}\n", true)
-                else {
-                    write("[$id] ")
-                    writeEntry(result.get("text")?.asString ?: "undefined", OutputKind.RESULT)
-                    write("\n")
-                }
-                updateBusyStatus()
-            } }
+                "declarations" to evaluation.declarations, "columns" to outputColumns, "loader" to loader))
+        }, background))
+    }
+
+    /**
+     * Run File: the file's top-level code runs again now, as a program would, and the
+     * console prints its module. Console variables stay; the file's names read the new run.
+     */
+    fun runFile(file: VirtualFile) {
+        if (!file.isValid || !ConsoleFiles.isSource(file)) return
+        if (ready == null) restart()
+        ConsoleTrace.log("RUN FILE", file.path)
+        if (!debugPaused) refreshContextIfNeeded()
+        val id = ++command
+        writeEntry("\n[$id] ▶ ${file.name}\n", OutputKind.COMMAND)
+        val epoch = generation
+        val saved = saveContext(file, epoch)
+        val backend = contextReady ?: return
+        running[id] = System.nanoTime()
+        startBusyTimer()
+        showResult(id, epoch, backend.thenCombine(saved) { process, _ -> process }.thenComposeAsync({ process ->
+            process.request("run_file", mapOf("path" to file.path, "columns" to outputColumns) + declarationFields(file.path))
+        }, background)) { result ->
+            if (file.path == context?.path) result.getAsJsonArray("names")?.let { names ->
+                currentNames = names.map { it.asString }.toSet()
+            }
+        }
+    }
+
+    private fun showResult(id: Long, epoch: Long, reply: CompletableFuture<JsonObject>, update: (JsonObject) -> Unit = {}) {
+        reply.whenComplete { result, error -> onEdt(epoch) {
+            running.remove(id)
+            result?.let(update)
+            result?.getAsJsonArray("globals")?.let { globals ->
+                consoleNames = globals.map { it.asString }.toSet()
+            }
+            refreshCompletionNames()
+            if (error != null) write("[$id] ${message(error)}\n", true)
+            else {
+                write("[$id] ")
+                writeEntry(result.get("text")?.asString ?: "undefined", OutputKind.RESULT)
+                write("\n")
+            }
+            updateBusyStatus()
+        } }
     }
 
     private fun startBusyTimer() {

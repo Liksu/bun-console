@@ -195,6 +195,11 @@ class BunConsolePanel(private val project: Project, statusChanged: (String) -> U
         input.toolTipText = "Enter behavior is set in Settings > Tools > Bun Console; Up/Down at the edges browse history"
         service.attach({ text, kind, styles ->
             when (kind) {
+                // A new command, also one run from the editor, brings the end of the transcript into view.
+                BunConsoleProjectService.OutputKind.COMMAND -> {
+                    output.print(text, ConsoleViewContentType.NORMAL_OUTPUT)
+                    output.requestScrollingToEnd()
+                }
                 BunConsoleProjectService.OutputKind.JAVASCRIPT -> syntaxPrinter.print(text, styles, output::print)
                 BunConsoleProjectService.OutputKind.RESULT -> syntaxPrinter.print(text, append = output::print)
                 BunConsoleProjectService.OutputKind.CLEAR -> output.clear()
@@ -252,8 +257,6 @@ class BunConsolePanel(private val project: Project, statusChanged: (String) -> U
         if (input.text.isBlank()) return
         saveHistoryEdits()
         service.execute(input.text, input.getEditor(false)?.let { syntaxPrinter.capture(it) } ?: emptyList())
-        // A new command always brings the end of the transcript into view.
-        output.requestScrollingToEnd()
         input.text = ""
         draft = ""
         historyIndex = service.history.size
