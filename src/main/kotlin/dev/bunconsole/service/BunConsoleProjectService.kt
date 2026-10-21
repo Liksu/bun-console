@@ -5,6 +5,9 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.components.Service
+import com.intellij.notification.NotificationAction
+import com.intellij.notification.NotificationGroupManager
+import com.intellij.notification.NotificationType
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerEvent
@@ -37,6 +40,7 @@ import dev.bunconsole.runtime.ConsoleFiles
 import dev.bunconsole.runtime.ConsoleImports
 import dev.bunconsole.runtime.ConsoleOutput
 import dev.bunconsole.runtime.ConsoleTrace
+import dev.bunconsole.runtime.RuntimeFailure
 import dev.bunconsole.runtime.TopLevelDeclarations
 import dev.bunconsole.settings.BunConsoleSettings
 import dev.bunconsole.ui.ConsoleStyle
@@ -418,7 +422,8 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
      * Runs console input. [loader] ("ts", "tsx" or "jsx") compiles code selected in such a
      * file to JavaScript first; console input itself is JavaScript. Code run from the editor
      * ([fromEditor]) runs in the current state: an edited context file is not reloaded first,
-     * so its names keep the values of its last run instead of running the file again.
+     * so its names keep the values of its last run instead of running the file again, and a
+     * context file that has not run yet is not run to provide a name: the console asks first.
      */
     fun execute(source: String, styles: List<ConsoleStyle> = emptyList(), loader: String? = null, fromEditor: Boolean = false) {
         if (source.isBlank()) return
@@ -450,16 +455,32 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
                 ConsoleImports.prepare(project, source, loader ?: "js")
             }
             it.request("eval", mapOf("code" to evaluation.code, "imports" to evaluation.imports,
-                "declarations" to evaluation.declarations, "columns" to outputColumns, "loader" to loader))
-        }, background))
+                "declarations" to evaluation.declarations, "columns" to outputColumns, "loader" to loader,
+                "withoutRunning" to fromEditor))
+        }, background), failed = { error -> if (fromEditor) offerToRunFirst(error, source, loader) })
+    }
+
+    /** Code from the editor needed a name of a file that has not run: offer to run the file, then the code again. */
+    private fun offerToRunFirst(error: Throwable, source: String, loader: String?) {
+        val notRun = (generateSequence(error) { it.cause }.firstOrNull { it is RuntimeFailure } as? RuntimeFailure)
+            ?.reply?.getAsJsonObject("notRun") ?: return
+        val file = LocalFileSystem.getInstance().findFileByPath(notRun.get("path").asString) ?: return
+        val name = notRun.get("name").asString
+        NotificationGroupManager.getInstance().getNotificationGroup("Bun Console")
+            .createNotification("$name is from ${file.name}, which has not run yet",
+                "The selection does not run the file by itself.", NotificationType.INFORMATION)
+            .addAction(NotificationAction.createSimpleExpiring("Run ${file.name}, then the selection") {
+                runFile(file)?.thenAccept { onEdt(generation) { execute(source, loader = loader, fromEditor = true) } }
+            })
+            .notify(project)
     }
 
     /**
      * Run File: the file's top-level code runs again now, as a program would; the console shows
      * its output (and errors) only. Console variables stay; the file's names read the new run.
      */
-    fun runFile(file: VirtualFile) {
-        if (!file.isValid || !ConsoleFiles.isSource(file)) return
+    fun runFile(file: VirtualFile): CompletableFuture<JsonObject>? {
+        if (!file.isValid || !ConsoleFiles.isSource(file)) return null
         if (ready == null) restart()
         ConsoleTrace.log("RUN FILE", file.path)
         if (!debugPaused) refreshContextIfNeeded()
@@ -467,10 +488,10 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
         writeEntry("\n[$id] ▶ ${file.name}\n", OutputKind.COMMAND)
         val epoch = generation
         val saved = saveContext(file, epoch)
-        val backend = contextReady ?: return
+        val backend = contextReady ?: return null
         running[id] = System.nanoTime()
         startBusyTimer()
-        showResult(id, epoch, backend.thenCombine(saved) { process, _ -> process }.thenComposeAsync({ process ->
+        return showResult(id, epoch, backend.thenCombine(saved) { process, _ -> process }.thenComposeAsync({ process ->
             process.request("run_file", mapOf("path" to file.path, "columns" to outputColumns) + declarationFields(file.path))
         }, background)) { result ->
             if (file.path == context?.path) result.getAsJsonArray("names")?.let { names ->
@@ -479,7 +500,8 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
         }
     }
 
-    private fun showResult(id: Long, epoch: Long, reply: CompletableFuture<JsonObject>, update: (JsonObject) -> Unit = {}) {
+    private fun showResult(id: Long, epoch: Long, reply: CompletableFuture<JsonObject>, failed: (Throwable) -> Unit = {},
+                           update: (JsonObject) -> Unit = {}): CompletableFuture<JsonObject> {
         reply.whenComplete { result, error -> onEdt(epoch) {
             running.remove(id)
             result?.let(update)
@@ -487,7 +509,7 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
                 consoleNames = globals.map { it.asString }.toSet()
             }
             refreshCompletionNames()
-            if (error != null) write("[$id] ${message(error)}\n", true)
+            if (error != null) { write("[$id] ${message(error)}\n", true); failed(error) }
             // Run File has no result to print: its output was the point.
             else if (result.has("text")) {
                 write("[$id] ")
@@ -496,6 +518,7 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
             }
             updateBusyStatus()
         } }
+        return reply
     }
 
     private fun startBusyTimer() {

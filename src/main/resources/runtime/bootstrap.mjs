@@ -199,7 +199,8 @@ socket.on("data", (chunk) => {
 });
 
 async function handle(request) {
-  const fail = (error) => send({ id: request?.id, ok: false, error: formatError(error) });
+  const fail = (error) => send({ id: request?.id, ok: false, error: formatError(error),
+    ...(error instanceof NotRunError ? { notRun: { path: error.path, name: error.binding } } : {}) });
   try {
     const result = await dispatch(request);
     // An evaluation leaves the queue once its synchronous part has run, so a
@@ -214,10 +215,11 @@ function send(message) {
   catch (error) { reportUncaught("Bun Console could not send a reply:", error); }
 }
 
-function evaluate(source) {
+function evaluate(source, withoutRunning = false) {
   return new Promise((resolve, reject) => {
     const evaluation = {
       settled: false,
+      withoutRunning,
       resolve(value) { if (!evaluation.settled) { evaluation.settled = true; resolve(value); } },
       reject(error) { if (!evaluation.settled) { evaluation.settled = true; reject(error); } },
     };
@@ -439,9 +441,29 @@ function reconcile(record) {
   }
 }
 
+/**
+ * Code run from the editor (Run Selection) never runs a context file just to read one of its
+ * names: the IDE asks first. A file that already ran, or that another module loaded, is used as is.
+ */
+class NotRunError extends ReferenceError {
+  constructor(record, imported) {
+    super(`${imported} is from ${basename(record.path)}, which has not run yet`);
+    this.path = record.path;
+    this.binding = imported;
+    this.stack = `ReferenceError: ${this.message}`; // the console's own frames are noise here
+  }
+}
+function needsRun(record) {
+  return evaluationScope.getStore()?.withoutRunning === true && !record.namespace && !require.cache[resolve(record.path)];
+}
+
 function reader(record, imported) {
-  if (imported === "*") return () => readModule(record);
+  if (imported === "*") return () => {
+    if (needsRun(record)) throw new NotRunError(record, basename(record.path));
+    return readModule(record);
+  };
   return () => {
+    if (needsRun(record)) throw new NotRunError(record, imported);
     const namespace = readModule(record);
     if (imported in namespace) return namespace[imported];
     const file = basename(record.path);
@@ -756,7 +778,7 @@ async function dispatch(request) {
         delete server.context[name];
         bindings.delete(name);
       }
-      return { [DEFERRED]: evaluate(compileSelection(request.code, request.loader))
+      return { [DEFERRED]: evaluate(compileSelection(request.code, request.loader), request.withoutRunning === true)
         .then((value) => ({ text: render(value), globals: userGlobals() })) };
     }
     case "run_file": {

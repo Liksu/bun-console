@@ -18,6 +18,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
+/** A failed request; [reply] carries details such as the file a selection needs to run first ("notRun"). */
+class RuntimeFailure(message: String, val reply: JsonObject) : IllegalStateException(message)
+
 /** Kind of text the Bun process prints: DevTools colors warnings apart from errors. */
 enum class ConsoleOutput { NORMAL, ERROR, WARNING, CLEAR }
 
@@ -122,7 +125,7 @@ class BunConsoleProcess(
                         ConsoleTrace.log("<- #$id", ConsoleTrace.clip(line))
                         val job = jobs.remove(id) ?: continue
                         if (message.get("ok")?.asBoolean == true) job.complete(message)
-                        else job.completeExceptionally(IllegalStateException(message.get("error")?.asString ?: "Evaluation failed"))
+                        else job.completeExceptionally(RuntimeFailure(message.get("error")?.asString ?: "Evaluation failed", message))
                     }
                     fail("Bun connection closed")
                 } catch (error: Exception) { fail(error.message ?: "Bun connection failed") }

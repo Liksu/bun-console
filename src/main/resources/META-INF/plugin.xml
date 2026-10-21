@@ -29,7 +29,7 @@ Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
 <p>0.2.4</p>
 <ul>
   <li>Run File: runs the whole file in the editor again and shows its output; Run Selection: runs the
-      selected code as console input, TypeScript included. Both are buttons in the console's title bar
+      selected code as console input, TypeScript included, and asks before running a file whose names it needs. Both are buttons in the console's title bar
       and commands in the editor's context menu; the title bar buttons stay visible while you work in the editor.</li>
   <li>Scroll to the End and Clear Output buttons in the console's title bar.</li>
   <li>Find Action (Ctrl+Shift+A) finds the console as "JavaScript Console", "TypeScript Console" or "REPL".</li>
@@ -84,6 +84,7 @@ Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
         <editorActionHandler action="EditorDown" implementationClass="dev.bunconsole.ui.ConsoleHistoryHandler$Down"/>
         <editorActionHandler action="EditorEnter" implementationClass="dev.bunconsole.ui.ConsoleEnterHandler"/>
         <editorActionHandler action="EditorStartNewLine" implementationClass="dev.bunconsole.ui.ConsoleShiftEnterHandler"/>
+        <notificationGroup id="Bun Console" displayType="BALLOON"/>
         <toolWindow id="Bun Console" anchor="bottom" icon="/icons/console.svg"
                     factoryClass="dev.bunconsole.ui.BunConsoleToolWindowFactory"/>
     </extensions>
@@ -110,7 +111,7 @@ Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
         </action>
         <action id="dev.bunconsole.RunSelection" class="dev.bunconsole.ui.RunSelectionAction"
                 text="Run Selection in Bun Console" description="Run the selected code as console input"
-                icon="AllIcons.Debugger.ExecuteCurrentStatement">
+                icon="AllIcons.Actions.RunToCursor">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </action>
         <action id="dev.bunconsole.Open" class="dev.bunconsole.ui.OpenConsoleAction"

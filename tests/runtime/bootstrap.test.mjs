@@ -565,3 +565,23 @@ test("code selected in a TypeScript file runs as console input once compiled", a
     await runtime.stop();
   }
 }, 15000);
+
+test("code run from the editor does not run a context file to read its names", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "bun-console-without-running-"));
+  const main = join(directory, "main.js").replaceAll("\\", "/");
+  writeFileSync(main, "var a = 0;\nfor (var i = 0; i < 10; i++) a++;\nconsole.log('file ran');\nexport { a };");
+  const runtime = await start();
+  const fromEditor = (code) => runtime.request("eval", { code, withoutRunning: true });
+  try {
+    await runtime.request("load", { path: main });
+    expect((await fromEditor("1 + 1")).text).toBe("2");
+    await expect(fromEditor("console.log(a + 12)")).rejects.toThrow("a is from main.js, which has not run yet");
+    expect(runtime.stdout()).not.toContain("file ran");
+    // Typed console input runs the file on first use, as before; then editor code reads that run.
+    expect((await runtime.request("eval", { code: "a" })).text).toBe("10");
+    expect((await fromEditor("a + 12")).text).toBe("22");
+  } finally {
+    await runtime.stop();
+    if (directory.startsWith(tmpdir().replaceAll("\\", "/")) || directory.startsWith(tmpdir())) rmSync(directory, { recursive: true, force: true });
+  }
+}, 15000);
