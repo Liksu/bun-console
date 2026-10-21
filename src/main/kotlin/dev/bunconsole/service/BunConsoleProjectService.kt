@@ -416,13 +416,15 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
 
     /**
      * Runs console input. [loader] ("ts", "tsx" or "jsx") compiles code selected in such a
-     * file to JavaScript first; console input itself is JavaScript.
+     * file to JavaScript first; console input itself is JavaScript. Code run from the editor
+     * ([fromEditor]) runs in the current state: an edited context file is not reloaded first,
+     * so its names keep the values of its last run instead of running the file again.
      */
-    fun execute(source: String, styles: List<ConsoleStyle> = emptyList(), loader: String? = null) {
+    fun execute(source: String, styles: List<ConsoleStyle> = emptyList(), loader: String? = null, fromEditor: Boolean = false) {
         if (source.isBlank()) return
         if (ready == null) restart()
         ConsoleTrace.log("INPUT", source + (pausedSession()?.let { "   [paused frame: ${it.sessionName}]" } ?: ""))
-        if (!debugPaused) refreshContextIfNeeded()
+        if (!debugPaused && !fromEditor) refreshContextIfNeeded()
         val id = ++command
         history.add(source)
         if (history.size > 500) history.removeAt(0)
@@ -453,8 +455,8 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
     }
 
     /**
-     * Run File: the file's top-level code runs again now, as a program would, and the
-     * console prints its module. Console variables stay; the file's names read the new run.
+     * Run File: the file's top-level code runs again now, as a program would; the console shows
+     * its output (and errors) only. Console variables stay; the file's names read the new run.
      */
     fun runFile(file: VirtualFile) {
         if (!file.isValid || !ConsoleFiles.isSource(file)) return
@@ -486,9 +488,10 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
             }
             refreshCompletionNames()
             if (error != null) write("[$id] ${message(error)}\n", true)
-            else {
+            // Run File has no result to print: its output was the point.
+            else if (result.has("text")) {
                 write("[$id] ")
-                writeEntry(result.get("text")?.asString ?: "undefined", OutputKind.RESULT)
+                writeEntry(result.get("text").asString, OutputKind.RESULT)
                 write("\n")
             }
             updateBusyStatus()

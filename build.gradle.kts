@@ -95,6 +95,8 @@ intellijPlatform {
         failureLevel = VerifyPluginTask.FailureLevel.ALL.filterNot { it == VerifyPluginTask.FailureLevel.EXPERIMENTAL_API_USAGES }
         ides {
             current()
+            // IntelliJ IDEA Ultimate has no Bun plugin: the verifier checks that the plugin still loads there.
+            if (!testIdea) create(IntelliJPlatformType.IntellijIdeaUltimate, "2026.2.3")
             // -PverifyEap also checks the next WebStorm EAP (APIs scheduled for removal show up there first).
             if (providers.gradleProperty("verifyEap").isPresent) {
                 select {

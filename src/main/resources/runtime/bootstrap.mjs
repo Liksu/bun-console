@@ -705,7 +705,7 @@ async function runFile(path, declared) {
   record.loadedSource ??= source;
   reconcile(record);
   const names = currentFile === path ? moduleNames(record).names : undefined;
-  return { text: render(namespace), globals: userGlobals(), names };
+  return { globals: userGlobals(), names };
 }
 
 // Code selected in a TypeScript or JSX file runs as console input once compiled.

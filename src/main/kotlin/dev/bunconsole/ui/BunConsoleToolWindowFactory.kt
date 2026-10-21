@@ -7,6 +7,7 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
+import com.intellij.openapi.wm.impl.content.ToolWindowContentUi
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -36,6 +37,8 @@ class BunConsoleToolWindowFactory : ToolWindowFactory, DumbAware {
         }
         outputActions = panel.outputActions
         updateTitleActions()
+        // The run buttons are used while the editor has the focus; keep them visible then too.
+        toolWindow.component.putClientProperty(ToolWindowContentUi.DONT_HIDE_TOOLBAR_IN_HEADER, true)
         Disposer.register(toolWindow.contentManager, panel)
         // While the tool window is hidden, the console neither starts nor follows the editor.
         project.messageBus.connect(toolWindow.disposable).subscribe(ToolWindowManagerListener.TOPIC, object : ToolWindowManagerListener {

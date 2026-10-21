@@ -28,9 +28,9 @@ Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
     <change-notes><![CDATA[
 <p>0.2.4</p>
 <ul>
-  <li>Run File: runs the whole file in the editor again and prints its module; Run Selection: runs the
+  <li>Run File: runs the whole file in the editor again and shows its output; Run Selection: runs the
       selected code as console input, TypeScript included. Both are buttons in the console's title bar
-      and commands in the editor's context menu.</li>
+      and commands in the editor's context menu; the title bar buttons stay visible while you work in the editor.</li>
   <li>Scroll to the End and Clear Output buttons in the console's title bar.</li>
   <li>Find Action (Ctrl+Shift+A) finds the console as "JavaScript Console", "TypeScript Console" or "REPL".</li>
   <li>Works in IntelliJ IDEA Ultimate: the Bun plugin is no longer required; only the debugger needs it,
@@ -110,7 +110,7 @@ Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
         </action>
         <action id="dev.bunconsole.RunSelection" class="dev.bunconsole.ui.RunSelectionAction"
                 text="Run Selection in Bun Console" description="Run the selected code as console input"
-                icon="AllIcons.Debugger.EvaluateExpression">
+                icon="AllIcons.Debugger.ExecuteCurrentStatement">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </action>
         <action id="dev.bunconsole.Open" class="dev.bunconsole.ui.OpenConsoleAction"

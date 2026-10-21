@@ -83,6 +83,6 @@ class RunSelectionAction : DumbAwareAction() {
     override fun actionPerformed(event: AnActionEvent) {
         val project = event.project ?: return
         val (code, file) = selection(event) ?: return
-        inConsole(project) { it.execute(code, loader = ConsoleFiles.loader(file)) }
+        inConsole(project) { it.execute(code, loader = ConsoleFiles.loader(file), fromEditor = true) }
     }
 }

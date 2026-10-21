@@ -152,19 +152,26 @@ the editor:
 
 | Button | What runs |
 | --- | --- |
-| **Run File** (▶) | the whole file in the editor, as a program: its top-level code runs again *now*, its output appears in the console, and its module is printed: `[4] Module { runs: 2, … }` |
-| **Run Selection** (calculator) | the code selected in the editor, exactly as if you typed it into the console: it gets a number, goes into the history, and its declarations stay |
+| **Run File** (▶) | the whole file in the editor, as a program: its top-level code runs again *now*, and its output (and errors) appear in the console |
+| **Run Selection** (console with ▶) | the code selected in the editor, exactly as if you typed it into the console: it gets a number, goes into the history, and its declarations stay |
 
 - **Run File** saves the file first. Console variables are kept, and the file's names in the
   console now read the new run. The files it imports are not run again (Restart Runtime for that).
   Unlike the console's lazy loading, this always executes the file, top-level `await` included —
   that is the point of the button. It also runs a file from the *Project* view's context menu.
-- **Run Selection** compiles code selected in a TypeScript (or JSX) file to JavaScript first, so
-  type annotations, `as`, generics and enums work. While a debugged program is paused, the
-  selection is evaluated in its stack frame, like any console input (there types are not compiled).
+- **Run Selection** runs in the current state: if you edited the file since its last run, the file
+  is *not* run again first, so its names keep the values of that run (typed console input, in
+  contrast, picks up the edited file). A selection that uses a name of a file that never ran
+  runs that file once, as any console input would. Code selected in a TypeScript (or JSX) file is
+  compiled to JavaScript first, so type annotations, `as`, generics and enums work. While a debugged
+  program is paused, the selection is evaluated in its stack frame (there types are not compiled).
 - The buttons are disabled when there is nothing to run: no JavaScript/TypeScript file in the
-  editor, or no selection. Shortcuts can be assigned in *Settings → Keymap* ("Run File in Bun
-  Console", "Run Selection in Bun Console").
+  editor, or no selection. They stay visible while you work in the editor. Shortcuts can be
+  assigned in *Settings → Keymap* ("Run File in Bun Console", "Run Selection in Bun Console").
+
+**Editor on the left, console on the right** (as in JS Bin): in the console's ⋮ menu choose
+*Move to → Right Top*. To give it the full height of the window, turn on *Settings → Appearance &
+Behavior → Appearance → Widescreen tool window layout*.
 
 ## Your files as the console context
 

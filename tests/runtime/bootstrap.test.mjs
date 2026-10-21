@@ -533,12 +533,13 @@ test("Run File runs the file's top-level code again; console names read the new 
     await run("var mine = 'kept'");
     expect((await run("[runs, hidden].join()")).text).toBe("'1,11'");
     const first = await runtime.request("run_file", { path: ide("main.ts"), declared: ["hidden", "runs"] });
-    expect(first.text).toBe("Module { hidden: 12, runs: 2 }");
+    expect(first.text).toBeUndefined(); // the run's output is the point, not its module
     expect(first.names).toEqual(["hidden", "runs"]);
     expect(runtime.stdout()).toContain("main runs 2");
     expect((await run("[runs, hidden, mine, globalThis.dependencyRuns].join()")).text).toBe("'2,12,kept,1'");
     // A file outside the console context runs too, and may use top-level await.
-    expect((await runtime.request("run_file", { path: ide("waits.ts") })).text).toBe("Module { waited: true }");
+    await runtime.request("run_file", { path: ide("waits.ts") });
+    expect((await run("(await $bcImp('./waits.ts')).waited")).text).toBe("true");
     // A file that no longer parses keeps its previous run.
     writeFileSync(ide("main.ts"), "export const broken: number = ;");
     await expect(runtime.request("run_file", { path: ide("main.ts") })).rejects.toThrow();

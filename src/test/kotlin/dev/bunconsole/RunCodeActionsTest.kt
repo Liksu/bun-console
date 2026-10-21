@@ -9,7 +9,9 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.testFramework.PlatformTestUtil
 import dev.bunconsole.runtime.ConsoleFiles
 import dev.bunconsole.service.BunConsoleProjectService
@@ -52,20 +54,27 @@ class RunCodeActionsTest : ConsoleTestCase() {
             assertFalse(noSelection.presentation.isEnabled)
 
             service.runFile(file)
-            waitFor("File did not run") { output.contains("[1] Module {") }
+            waitFor("File did not run") { output.contains("main runs 1") }
             assertTrue(output.toString(), output.contains("[1] ▶ main.ts"))
-            assertTrue(output.toString(), output.contains("main runs 1"))
-            assertTrue(output.toString(), output.contains("runs: 1") && output.contains("sample: 42"))
             service.runFile(file)
-            waitFor("File did not run again") { output.contains("[2] Module {") }
-            assertTrue(output.toString(), output.contains("main runs 2") && output.contains("runs: 2"))
+            waitFor("File did not run again") { output.contains("main runs 2") }
 
-            val start = source.indexOf("twice(sample")
-            editor.selectionModel.setSelection(start, source.indexOf('\n', start))
+            // The selection runs in the current state: the edited file is not run again first.
+            WriteCommandAction.runWriteCommandAction(project) {
+                editor.document.insertString(0, "console.log('edited version runs');\n")
+            }
+            PsiDocumentManager.getInstance(project).commitAllDocuments()
+            val start = editor.document.text.indexOf("twice(sample")
+            editor.selectionModel.setSelection(start, editor.document.text.indexOf('\n', start))
             assertTrue(updated("dev.bunconsole.RunSelection").presentation.isEnabled)
-            service.execute(editor.selectionModel.selectedText!!, loader = ConsoleFiles.loader(file))
+            service.execute(editor.selectionModel.selectedText!!, loader = ConsoleFiles.loader(file), fromEditor = true)
             waitFor("Selection did not run") { output.contains("[3] 84") }
             assertEquals("twice(sample as number)", service.history.last())
+            assertFalse("Run File prints its output, not its module: $output", output.contains("Module {"))
+            assertFalse("Run Selection must not run the edited file: $output", output.contains("edited version runs"))
+            // Console input, unlike a selection, first updates the edited context, as before.
+            service.execute("runs")
+            waitFor("Edited file was not reloaded") { output.contains("edited version runs") && output.contains("[4] 3") }
         } finally {
             service.stop().get(5, TimeUnit.SECONDS)
             service.dispose()
