@@ -795,9 +795,12 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
                         refreshCompletionNames()
                         val skipped = result.getAsJsonArray("unsupported").map { it.asString }
                         reportHidden(file?.name, result)
-                        write("Loaded ${file?.name ?: "plain JavaScript"}: $count exports" +
-                            (if (collisions.isEmpty()) "" else "; collisions: ${collisions.joinToString()}") +
-                            (if (skipped.isEmpty()) "" else "; names requiring an alias: ${skipped.joinToString()}") + "\n")
+                        // The status line shows the context; the transcript gets only what needs attention.
+                        ConsoleTrace.log("CONTEXT", "Loaded ${file?.name ?: "plain JavaScript"}: $count names")
+                        val problems = listOfNotNull(
+                            collisions.takeIf { it.isNotEmpty() }?.let { "names already in use, not taken from the file: ${it.joinToString()}" },
+                            skipped.takeIf { it.isNotEmpty() }?.let { "names requiring an alias: ${it.joinToString()}" })
+                        if (problems.isNotEmpty()) write("${file?.name ?: "plain JavaScript"}: ${problems.joinToString("; ")}\n")
                         updateContextStatus()
                     }
                 }

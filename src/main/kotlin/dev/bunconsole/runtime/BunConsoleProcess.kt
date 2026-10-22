@@ -131,7 +131,6 @@ class BunConsoleProcess(
                 } catch (error: Exception) { fail(error.message ?: "Bun connection failed") }
             }
             ConsoleTrace.log("PROCESS", "Bun ${hello.get("version")?.asString} pid ${child.pid()} ${arguments.joinToString(" ")}")
-            output("Bun ${hello.get("version")?.asString} ready\n", ConsoleOutput.NORMAL)
             this
         } catch (error: Exception) {
             close()

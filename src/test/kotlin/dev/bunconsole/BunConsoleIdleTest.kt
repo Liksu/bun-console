@@ -47,9 +47,9 @@ class BunConsoleIdleTest : ConsoleTestCase() {
             service.setConsoleVisible(false)
             editors.openFile(first, true)
             settle(2)
-            assertFalse("Hidden console followed the editor: $output", output.contains("Loaded first.ts"))
+            assertFalse("Hidden console followed the editor: $output", "one" in service.contextNames)
             service.setConsoleVisible(true)
-            PlatformTestUtil.waitWithEventsDispatching("Shown console did not catch up: $output", { output.contains("Loaded first.ts") }, 20)
+            PlatformTestUtil.waitWithEventsDispatching("Shown console did not catch up: $output", { "one" in service.contextNames }, 20)
             service.execute("one")
             PlatformTestUtil.waitWithEventsDispatching("Context after catch-up: $output", { output.contains("[2] 1") }, 20)
         } finally {
