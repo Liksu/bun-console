@@ -393,7 +393,7 @@ test("console output arrives on the control channel before the command's result"
   }
 }, 15000);
 
-test("files created after Bun started load, and CommonJS names explain what is missing", async () => {
+test("files created after Bun started load, and CommonJS top-level names are available", async () => {
   const directory = mkdtempSync(join(tmpdir(), "bun-console-late-files-"));
   const ide = (name) => join(directory, name).replaceAll("\\", "/");
   writeFileSync(ide("first.ts"), "export const first = 1;");
@@ -412,7 +412,10 @@ test("files created after Bun started load, and CommonJS names explain what is m
     const legacy = await runtime.request("load", { path: ide("legacy.cjs"), declared: ["count", "greet"] });
     expect(legacy.names).toEqual(["count", "greet"]);
     expect((await run("greet('you')")).text).toBe("'hello, you'");
-    await expect(run("count")).rejects.toThrow("not in module.exports of legacy.cjs");
+    // `count` is not in module.exports, yet readable, and live; module.exports itself is unchanged.
+    expect((await run("count")).text).toBe("1");
+    expect((await run("greet('again'); count")).text).toBe("2");
+    expect((await run("Object.keys(globalThis['legacy.cjs'].default).join()")).text).toBe("'greet'");
   } finally {
     await runtime.stop();
     if (directory.startsWith(tmpdir())) rmSync(directory, { recursive: true, force: true });
@@ -612,6 +615,31 @@ test("code run from the editor reads a file that has not run from its declaratio
     expect((await runtime.request("eval", { code: "a" })).text).toBe("10");
     expect((await fromEditor("a")).text).toBe("10");
     expect((await runtime.request("eval", { code: "globalThis.depRuns" })).text).toBe("1");
+  } finally {
+    await runtime.stop();
+    if (directory.startsWith(tmpdir())) rmSync(directory, { recursive: true, force: true });
+  }
+}, 15000);
+
+test("errors show the user's frames, not the console's own", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "bun-console-stack-"));
+  const ide = (name) => join(directory, name).replaceAll("\\", "/");
+  writeFileSync(ide("legacy.cjs"), "let calls = 0;\nfunction greet(name) { calls++; return `hello, ${name}`; }\n" +
+    "function fail() { throw new Error('from the project'); }\nmodule.exports = { greet, fail };");
+  const runtime = await start();
+  try {
+    await runtime.request("load", { path: ide("legacy.cjs"), declared: ["calls", "greet", "fail"] });
+    const failure = await runtime.request("eval", { code: "fail()" }).catch((error) => error.message);
+    expect(failure).toContain("from the project");
+    expect(failure).toContain("legacy.cjs:3");
+    expect(failure).not.toMatch(/bootstrap\.mjs|node:repl|async_hooks|runInThisContext|native/);
+    expect((await runtime.request("eval", { code: "calls" })).text).toBe("0");
+    const added = await runtime.request("add_symbol", { path: ide("legacy.cjs"), imported: "calls", local: "legacyCalls", declared: ["calls", "greet", "fail"] });
+    expect(added.local).toBe("legacyCalls");
+    await runtime.request("eval", { code: "greet('x')" });
+    expect((await runtime.request("eval", { code: "legacyCalls" })).text).toBe("1");
+    await expect(runtime.request("add_symbol", { path: ide("legacy.cjs"), imported: "nothing", declared: ["calls", "greet", "fail"] }))
+      .rejects.toThrow(/^Error: legacy\.cjs has no top-level name 'nothing'$/);
   } finally {
     await runtime.stop();
     if (directory.startsWith(tmpdir())) rmSync(directory, { recursive: true, force: true });

@@ -222,6 +222,9 @@ Bun Console** in its context menu. Its names disappear; your own variables stay.
 `export { tokenize as split }` and names a default export after its declaration. Top-level
 declarations can be added whether they are exported or not; declarations nested inside functions
 are only reachable while paused in a frame where they are in scope ([Debugging](#debugging)).
+Where the console could not provide a value, the command is disabled and says why: a type
+(`interface`, `type`), a `declare` or `.d.ts` declaration, an imported name (add it from its own
+file), or a nested name.
 
 **Restart Runtime keeps all of it.** Pinned files, added files and added symbols come back in the
 fresh runtime; only variables created by your commands are reset.
@@ -260,8 +263,11 @@ them later. If a file was loaded some other way before the console knew about it
 through a dynamic `import()`), reading one of its non-exported names says that it needs
 **Restart Runtime**.
 
-CommonJS files (`module.exports = …`) cannot be extended that way: names listed in
-`module.exports` work, and reading any other top-level name explains why it is unavailable.
+CommonJS files (`module.exports = …`, `.cjs` or `.js`) work the same way, by another route:
+an export list would turn them into ES modules, so the console registers getters for their
+top-level names instead. `module.exports` stays exactly as the file sets it, and a name such as
+`let calls = 0` reads its current value. TypeScript compiled to CommonJS (`.cts`) shares only
+its `module.exports`.
 
 ## Imports
 

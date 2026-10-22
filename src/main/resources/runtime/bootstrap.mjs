@@ -7,9 +7,9 @@ import { Console } from "node:console";
 import { StringDecoder } from "node:string_decoder";
 import { formatWithOptions, inspect } from "node:util";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { basename, dirname, extname, isAbsolute, resolve } from "node:path";
-import { builtinModules } from "node:module";
+import Module, { builtinModules } from "node:module";
 
 // The IDE owns the loopback listener. User stdout/stderr are never a protocol.
 const port = Number(process.env.BUN_CONSOLE_PORT);
@@ -103,9 +103,18 @@ for (const method of ["log", "info", "debug", "warn", "error"]) {
 // As in DevTools, console.clear() empties the console.
 globalThis.console.clear = () => send({ event: "clear" });
 
+// Stack frames of the console itself (this file, the REPL, the console input line) say nothing
+// about the user's code; frames in project files stay.
+const SELF = fileURLToPath(import.meta.url).toLowerCase();
+const INTERNAL_FRAME = /^\s+at .*(node:repl|node:async_hooks|runInThisContext|\(native|native:|bun-console:\d)/;
+function trimStack(stack) {
+  return stack.split("\n").filter((line) => !/^\s+at /.test(line) ||
+    !(line.toLowerCase().includes(SELF) || INTERNAL_FRAME.test(line))).join("\n");
+}
+
 function formatError(error) {
   try {
-    return error instanceof Error || typeof error?.stack === "string" ? String(error.stack ?? error) : inspect(error);
+    return error instanceof Error || typeof error?.stack === "string" ? trimStack(String(error.stack ?? error)) : inspect(error);
   } catch { return "Unprintable error"; }
 }
 
@@ -321,21 +330,50 @@ const COMMON_JS = /\bmodule\.exports\b|\bexports\.[\w$]+\s*=/;
 const hooked = new Set();
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+// A CommonJS file would stop being CommonJS with an export statement (and a Bun load hook
+// turns any file into an ES module). Node's CommonJS compile hook appends getters for its
+// top-level names to a registry instead; module.exports stays exactly as the file sets it.
+const COMMON_JS_EXTENSIONS = [".cjs", ".js"];
+const commonJsKey = (path) => process.platform === "win32" ? resolve(path).toLowerCase() : resolve(path);
+const commonJsRecords = new Map();
+const commonJsLocals = new Map();
+Object.defineProperty(globalThis, Symbol.for("bun-console.commonjs-locals"), {
+  value: (file, locals) => commonJsLocals.set(commonJsKey(file), locals),
+});
+for (const extension of COMMON_JS_EXTENSIONS) {
+  const original = Module._extensions[extension] ?? Module._extensions[".js"];
+  Module._extensions[extension] = function (module, filename) {
+    const record = commonJsRecords.get(commonJsKey(filename));
+    if (!record) return original.call(this, module, filename);
+    const source = readFileSync(filename, "utf8");
+    const locals = record.locals ?? [];
+    record.exposed = new Set(locals);
+    record.loadedSource = source;
+    const getters = locals.map((name) => `get ${name}() { return ${name}; }`).join(", ");
+    module._compile(locals.length
+      ? `${source}\n;globalThis[Symbol.for("bun-console.commonjs-locals")]?.(${JSON.stringify(filename)}, { ${getters} });\n`
+      : source, filename);
+  };
+}
+
 function exposeDeclarations(record, declared) {
   if (declared == null) return;
   if (!Array.isArray(declared)) throw new Error("Invalid declarations");
-  const loader = DECLARATION_LOADERS[extname(record.path).toLowerCase()];
+  const extension = extname(record.path).toLowerCase();
   const exported = scanExports(record.path);
   const source = readFileSync(record.path, "utf8");
   // The IDE lists declarations from the editor, which can be ahead of the file
   // on disk; only names that the saved file contains can be exposed.
   const names = [...new Set(declared)].filter((name) => typeof name === "string" && !exported.has(name) &&
     isIdentifier(name) && new RegExp(`(^|[^$\\w])${escapeRegExp(name)}($|[^$\\w])`).test(source));
-  // A CommonJS file would stop being CommonJS with an export statement. Its
-  // names are only candidates: those missing from module.exports report why.
-  const commonJs = !loader || COMMON_JS.test(source);
-  record.locals = commonJs ? [] : names;
-  record.commonJsCandidates = commonJs ? names : [];
+  const loader = DECLARATION_LOADERS[extension];
+  if (!loader || COMMON_JS.test(source)) {
+    // TypeScript compiled to CommonJS (.cts) has no such hook: only its module.exports is available.
+    record.locals = COMMON_JS_EXTENSIONS.includes(extension) ? names : [];
+    if (record.locals.length) commonJsRecords.set(commonJsKey(record.path), record);
+    return;
+  }
+  record.locals = names;
   if (!record.locals.length || hooked.has(record.moduleId)) return;
   hooked.add(record.moduleId);
   const file = resolve(record.path);
@@ -379,7 +417,6 @@ function moduleNames(record) {
     ? new Set(Object.keys(readModule(record)))
     : scanExports(record.path);
   const hidden = [];
-  if (!loaded) for (const name of record.commonJsCandidates ?? []) names.add(name);
   // A file edited after it was loaded gets its new names when it is reloaded;
   // they are not "hidden" by a dependency that loaded it first.
   const stale = loaded && record.loadedSource !== undefined && record.loadedSource !== readFileSync(record.path, "utf8");
@@ -406,9 +443,17 @@ function readModule(record) {
     const before = require.cache[resolve(record.path)] ? undefined : readFileSync(record.path, "utf8");
     const loaded = require(resolve(record.path));
     record.loadedSource ??= before;
-    // A CommonJS file yields module.exports; present it like import() does.
-    record.namespace = Object.prototype.toString.call(loaded) === "[object Module]" ? loaded
-      : Object.freeze({ ...(loaded !== null && typeof loaded === "object" ? loaded : {}), default: loaded });
+    // A CommonJS file yields module.exports; present it like import() does, with its exposed top-level names.
+    if (Object.prototype.toString.call(loaded) === "[object Module]") record.namespace = loaded;
+    else {
+      const view = { ...(loaded !== null && typeof loaded === "object" ? loaded : {}) };
+      const locals = commonJsLocals.get(commonJsKey(record.path));
+      for (const name of Object.keys(locals ?? {})) {
+        if (!(name in view)) Object.defineProperty(view, name, { enumerable: true, get: () => locals[name] });
+      }
+      view.default = loaded;
+      record.namespace = Object.freeze(view);
+    }
     reconcile(record);
   }
   return record.namespace;
@@ -428,7 +473,7 @@ function reconcile(record) {
   for (const [name, binding] of bindings) {
     if (binding.moduleId !== record.moduleId || binding.imported === "*" || !ownsBinding(name, binding)) continue;
     // CommonJS candidates and hidden declarations stay bound so that reading them explains why.
-    if (record.commonJsCandidates?.includes(binding.imported) || record.unavailable?.has(binding.imported)) continue;
+    if (record.unavailable?.has(binding.imported)) continue;
     if ((binding.origin === "current" || binding.origin === "file") && !(binding.imported in namespace)) {
       delete server.context[name];
       bindings.delete(name);
@@ -518,9 +563,7 @@ function reader(record, imported) {
       throw new ReferenceError(`${imported} is not available: another module loaded ${file} before the console ` +
         "could expose its top-level names. Restart Runtime to use it");
     }
-    throw new ReferenceError(record.commonJsCandidates?.includes(imported)
-      ? `${imported} is not in module.exports of ${file} (a CommonJS file exposes only module.exports)`
-      : `${imported} is not defined: ${file} no longer exports it`);
+    throw new ReferenceError(`${imported} is not defined: ${file} no longer exports it`);
   };
 }
 
@@ -625,7 +668,9 @@ function addSymbol(path, imported, requestedLocal, declared) {
   if (hidden.includes(imported)) {
     throw new Error(`'${imported}' is not exported and '${basename(path)}' was already loaded by another module; Restart Runtime to use it`);
   }
-  if (!names.includes(imported)) throw new Error(`Module '${path}' has no export '${imported}'`);
+  if (!names.includes(imported)) {
+    throw new Error(`${basename(path)} has no top-level name '${imported}'`);
+  }
   let local = requestedLocal ?? imported;
   if (!isIdentifier(local)) throw new Error(`Export '${imported}' needs a valid JavaScript alias`);
   const same = (name) => sameBinding(name, record.moduleId, imported);

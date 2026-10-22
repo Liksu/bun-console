@@ -28,6 +28,11 @@ Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
     <change-notes><![CDATA[
 <p>0.2.4</p>
 <ul>
+  <li>Top-level names of CommonJS files (<code>.cjs</code>, <code>.js</code>) are available too, not only
+      <code>module.exports</code>. Add Symbol is disabled, with the reason, where the console has no value
+      (types, declarations, imported or nested names).</li>
+  <li>Errors show your code's stack frames, not the console's own; the transcript no longer starts with
+      "Bun ready" and "Loaded file" lines.</li>
   <li>Run File: runs the whole file in the editor again and shows its output; Run Selection: runs the
       selected code as console input, TypeScript included; for a file that has not run it uses the file's declarations (<code>var a = 0</code> is 0) and asks before running the file for other values. Both are buttons in the console's title bar
       and commands in the editor's context menu; the title bar buttons stay visible while you work in the editor.</li>

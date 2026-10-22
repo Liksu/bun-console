@@ -793,7 +793,8 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
                         addedNames = additions.filterIsInstance<Addition.Symbol>().map(Addition.Symbol::local).toSet()
                         file?.path?.let(knownContextPaths::add)
                         refreshCompletionNames()
-                        val skipped = result.getAsJsonArray("unsupported").map { it.asString }
+                        // A default export has no name of its own; it is under globalThis['file'].default.
+                        val skipped = result.getAsJsonArray("unsupported").map { it.asString } - "default"
                         reportHidden(file?.name, result)
                         // The status line shows the context; the transcript gets only what needs attention.
                         ConsoleTrace.log("CONTEXT", "Loaded ${file?.name ?: "plain JavaScript"}: $count names")
