@@ -155,6 +155,10 @@ the editor:
 | **Run File** (▶) | the whole file in the editor, as a program: its top-level code runs again *now*, and its output (and errors) appear in the console |
 | **Run Selection** (▶ with a text cursor) | the code selected in the editor, exactly as if you typed it into the console: it gets a number, goes into the history, and its declarations stay |
 
+<p align="center">
+  <img src="docs/images/run-file.png" alt="Editor and console side by side: Run File prints the mortgage calculator's results and payment table" width="900">
+</p>
+
 - **Run File** saves the file first. Console variables are kept, and the file's names in the
   console now read the new run. The files it imports are not run again (Restart Runtime for that).
   Unlike the console's lazy loading, this always executes the file, top-level `await` included —
