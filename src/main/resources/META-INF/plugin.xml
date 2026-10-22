@@ -26,7 +26,7 @@ Bun plugin (bundled with WebStorm). Open <b>View | Tool Windows | Bun Console</b
 Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
 ]]></description>
     <change-notes><![CDATA[
-<p>0.2.4</p>
+<p>0.3.0</p>
 <ul>
   <li>Top-level names of CommonJS files (<code>.cjs</code>, <code>.js</code>) are available too, not only
       <code>module.exports</code>. Add Symbol is disabled, with the reason, where the console has no value
