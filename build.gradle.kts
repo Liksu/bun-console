@@ -97,6 +97,15 @@ intellijPlatform {
             current()
             // IntelliJ IDEA Ultimate has no Bun plugin: the verifier checks that the plugin still loads there.
             if (!testIdea) create(IntelliJPlatformType.IntellijIdeaUltimate, "2026.2.3")
+            // -PverifyIdes=PhpStorm,GoLand,… also checks other IDEs with the JavaScript plugin (latest 2026.2 release of each).
+            providers.gradleProperty("verifyIdes").orNull?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }?.let { names ->
+                select {
+                    types = names.map { name -> IntelliJPlatformType.entries.first { it.name.equals(name, ignoreCase = true) } }
+                    channels = listOf(ProductRelease.Channel.RELEASE)
+                    sinceBuild = "262"
+                    untilBuild = "262.*"
+                }
+            }
             // -PverifyEap also checks the next WebStorm EAP (APIs scheduled for removal show up there first).
             if (providers.gradleProperty("verifyEap").isPresent) {
                 select {
