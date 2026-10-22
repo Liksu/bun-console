@@ -111,7 +111,7 @@ Documentation: <a href="https://bunconsole.dev">bunconsole.dev</a></p>
         </action>
         <action id="dev.bunconsole.RunSelection" class="dev.bunconsole.ui.RunSelectionAction"
                 text="Run Selection in Bun Console" description="Run the selected code as console input"
-                icon="AllIcons.Actions.RunToCursor">
+                icon="/icons/runSelection.svg">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </action>
         <action id="dev.bunconsole.Open" class="dev.bunconsole.ui.OpenConsoleAction"

@@ -153,7 +153,7 @@ the editor:
 | Button | What runs |
 | --- | --- |
 | **Run File** (▶) | the whole file in the editor, as a program: its top-level code runs again *now*, and its output (and errors) appear in the console |
-| **Run Selection** (arrow to the text cursor) | the code selected in the editor, exactly as if you typed it into the console: it gets a number, goes into the history, and its declarations stay |
+| **Run Selection** (▶ with a text cursor) | the code selected in the editor, exactly as if you typed it into the console: it gets a number, goes into the history, and its declarations stay |
 
 - **Run File** saves the file first. Console variables are kept, and the file's names in the
   console now read the new run. The files it imports are not run again (Restart Runtime for that).
@@ -399,3 +399,7 @@ the release checklist.
 ## License
 
 [MIT](LICENSE) © Petro Borshchahivskyi
+
+The Run Selection icon is JetBrains' "Run and Select" icon from
+[intellij-community](https://github.com/JetBrains/intellij-community), used under the
+[Apache 2.0 license](https://www.apache.org/licenses/LICENSE-2.0).
