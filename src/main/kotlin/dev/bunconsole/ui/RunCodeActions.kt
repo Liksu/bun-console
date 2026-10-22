@@ -12,6 +12,7 @@ import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.psi.PsiDocumentManager
 import dev.bunconsole.runtime.ConsoleFiles
 import dev.bunconsole.service.BunConsoleProjectService
 
@@ -83,6 +84,8 @@ class RunSelectionAction : DumbAwareAction() {
     override fun actionPerformed(event: AnActionEvent) {
         val project = event.project ?: return
         val (code, file) = selection(event) ?: return
-        inConsole(project) { it.execute(code, loader = ConsoleFiles.loader(file), fromEditor = true) }
+        // The skeleton of the file is built from its PSI: let it match the editor.
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        inConsole(project) { it.execute(code, loader = ConsoleFiles.loader(file), fromEditor = true, file = file) }
     }
 }

@@ -161,10 +161,18 @@ the editor:
   that is the point of the button. It also runs a file from the *Project* view's context menu.
 - **Run Selection** runs in the current state: if you edited the file since its last run, the file
   is *not* run again first, so its names keep the values of that run (typed console input, in
-  contrast, picks up the edited file). It never runs a file by itself: if the selection uses a
-  name of a file that has not run yet (`a` from `scratch.js`), it stops with
-  `ReferenceError: a is from scratch.js, which has not run yet`, and a notification offers
-  **Run scratch.js, then the selection**. Code selected in a TypeScript (or JSX) file is
+  contrast, picks up the edited file).
+- **Run Selection never runs a file by itself.** If the file of the selection has not run yet,
+  the selection sees the file's *declarations*: functions, classes, and variables whose initial
+  value the file states without running project code. With `var a = 0` at the top of
+  `scratch.js`, selecting `console.log(a + 12)` prints `12`, and a function of the file that
+  changes `a` changes that same `a`. A value counts as stated when it is built from literals,
+  functions, other such names, and built-ins that run no code of yours (`new Map()`,
+  `Math.max(1, 2)`, `JSON.parse("…")`, `'a,b'.split(',')`); `connect()` or `fetch(…)` do not
+  count. For such a name (or a name of another file that has not run) the selection stops with
+  `ReferenceError: db is from scratch.js, which has not run yet`, and a notification offers
+  **Run scratch.js, then the selection**. The file's `import`s do load, as they would for any
+  import, so its functions can use them. Code selected in a TypeScript (or JSX) file is
   compiled to JavaScript first, so type annotations, `as`, generics and enums work. While a debugged
   program is paused, the selection is evaluated in its stack frame (there types are not compiled).
 - The buttons are disabled when there is nothing to run: no JavaScript/TypeScript file in the

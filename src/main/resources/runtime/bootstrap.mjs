@@ -457,13 +457,60 @@ function needsRun(record) {
   return evaluationScope.getStore()?.withoutRunning === true && !record.namespace && !require.cache[resolve(record.path)];
 }
 
+// The skeleton of a file that has not run: its declarations, built by the IDE with the rest of
+// the file turned into spaces. It loads as a module next to the file (imports resolve as there),
+// under a name that does not exist on disk, and a new version replaces it when the file changes.
+const SKELETON = /\.bun-console-skeleton\d+$/;
+const skeletonSources = new Map();
+Bun.plugin({
+  name: "bun-console skeletons",
+  setup(build) {
+    build.onResolve({ filter: SKELETON }, ({ path }) => ({ path }));
+    build.onLoad({ filter: SKELETON }, ({ path }) => ({
+      contents: skeletonSources.get(path) ?? "",
+      loader: LOADERS[extname(path.replace(SKELETON, "")).toLowerCase()] ?? "jsx",
+    }));
+  },
+});
+
+function applySkeleton(skeleton) {
+  if (skeleton == null) return;
+  if (typeof skeleton.path !== "string" || typeof skeleton.source !== "string" || !Array.isArray(skeleton.names)) {
+    throw new Error("Invalid skeleton");
+  }
+  const record = moduleRecord(skeleton.path);
+  if (record.skeletonSource === skeleton.source) return;
+  if (record.skeletonPath) { delete require.cache[record.skeletonPath]; skeletonSources.delete(record.skeletonPath); }
+  record.skeletonVersion = (record.skeletonVersion ?? 0) + 1;
+  record.skeletonPath = `${resolve(record.path)}.bun-console-skeleton${record.skeletonVersion}`;
+  record.skeletonSource = skeleton.source;
+  record.skeletonNames = new Set(skeleton.names);
+  record.skeleton = undefined;
+  skeletonSources.set(record.skeletonPath, skeleton.source);
+}
+
+/** A name of a file that has not run: its value in the skeleton, or a question to the IDE. */
+function skeletonValue(record, imported) {
+  if (!record.skeletonNames?.has(imported)) throw new NotRunError(record, imported);
+  if (!record.skeleton) {
+    try { record.skeleton = require(record.skeletonPath); }
+    catch (error) {
+      // Not expected: the skeleton is the file's own declarations. Fall back to running the file.
+      reportUncaught(`Bun Console could not load the declarations of ${basename(record.path)}:`, error);
+      record.skeletonNames = new Set();
+      throw new NotRunError(record, imported);
+    }
+  }
+  return record.skeleton[imported];
+}
+
 function reader(record, imported) {
   if (imported === "*") return () => {
     if (needsRun(record)) throw new NotRunError(record, basename(record.path));
     return readModule(record);
   };
   return () => {
-    if (needsRun(record)) throw new NotRunError(record, imported);
+    if (needsRun(record)) return skeletonValue(record, imported);
     const namespace = readModule(record);
     if (imported in namespace) return namespace[imported];
     const file = basename(record.path);
@@ -767,6 +814,7 @@ async function dispatch(request) {
     case "eval": {
       if (typeof request.code !== "string") throw new Error("Expected JavaScript source");
       if (Number.isInteger(request.columns)) columns = Math.min(Math.max(request.columns, 40), 1000);
+      if (request.withoutRunning === true) applySkeleton(request.skeleton);
       if (request.declarations != null && (!Array.isArray(request.declarations) ||
           request.declarations.some((name) => !isIdentifier(name)))) throw new Error("Invalid console declarations");
       await importModules(request.imports);

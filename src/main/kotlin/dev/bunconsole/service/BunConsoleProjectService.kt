@@ -19,6 +19,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.PsiManager
 import com.intellij.xdebugger.XDebugProcess
 import com.intellij.xdebugger.XDebugSession
 import com.intellij.xdebugger.XDebugSessionListener
@@ -40,6 +41,7 @@ import dev.bunconsole.runtime.ConsoleFiles
 import dev.bunconsole.runtime.ConsoleImports
 import dev.bunconsole.runtime.ConsoleOutput
 import dev.bunconsole.runtime.ConsoleTrace
+import dev.bunconsole.runtime.DeclarationSkeleton
 import dev.bunconsole.runtime.RuntimeFailure
 import dev.bunconsole.runtime.TopLevelDeclarations
 import dev.bunconsole.settings.BunConsoleSettings
@@ -423,9 +425,11 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
      * file to JavaScript first; console input itself is JavaScript. Code run from the editor
      * ([fromEditor]) runs in the current state: an edited context file is not reloaded first,
      * so its names keep the values of its last run instead of running the file again, and a
-     * context file that has not run yet is not run to provide a name: the console asks first.
+     * context file that has not run yet is not run to provide a name. Names of the editor's own
+     * [file] come from its declarations then ([DeclarationSkeleton]); for others the console asks.
      */
-    fun execute(source: String, styles: List<ConsoleStyle> = emptyList(), loader: String? = null, fromEditor: Boolean = false) {
+    fun execute(source: String, styles: List<ConsoleStyle> = emptyList(), loader: String? = null, fromEditor: Boolean = false,
+                file: VirtualFile? = null) {
         if (source.isBlank()) return
         if (ready == null) restart()
         ConsoleTrace.log("INPUT", source + (pausedSession()?.let { "   [paused frame: ${it.sessionName}]" } ?: ""))
@@ -454,14 +458,19 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
             val evaluation = ReadAction.computeBlocking<ConsoleImports.Evaluation, RuntimeException> {
                 ConsoleImports.prepare(project, source, loader ?: "js")
             }
+            val skeleton = file?.takeIf { fromEditor && ConsoleFiles.isSource(it) }?.let { editorFile ->
+                TopLevelDeclarations.cancellableRead(project) {
+                    PsiManager.getInstance(project).findFile(editorFile)?.let(DeclarationSkeleton::build)
+                }?.let { mapOf("path" to editorFile.path, "source" to it.source, "names" to it.names) }
+            }
             it.request("eval", mapOf("code" to evaluation.code, "imports" to evaluation.imports,
                 "declarations" to evaluation.declarations, "columns" to outputColumns, "loader" to loader,
-                "withoutRunning" to fromEditor))
-        }, background), failed = { error -> if (fromEditor) offerToRunFirst(error, source, loader) })
+                "withoutRunning" to fromEditor, "skeleton" to skeleton))
+        }, background), failed = { error -> if (fromEditor) offerToRunFirst(error, source, loader, file) })
     }
 
     /** Code from the editor needed a name of a file that has not run: offer to run the file, then the code again. */
-    private fun offerToRunFirst(error: Throwable, source: String, loader: String?) {
+    private fun offerToRunFirst(error: Throwable, source: String, loader: String?, editorFile: VirtualFile?) {
         val notRun = (generateSequence(error) { it.cause }.firstOrNull { it is RuntimeFailure } as? RuntimeFailure)
             ?.reply?.getAsJsonObject("notRun") ?: return
         val file = LocalFileSystem.getInstance().findFileByPath(notRun.get("path").asString) ?: return
@@ -470,7 +479,7 @@ class BunConsoleProjectService(private val project: Project) : Disposable {
             .createNotification("$name is from ${file.name}, which has not run yet",
                 "The selection does not run the file by itself.", NotificationType.INFORMATION)
             .addAction(NotificationAction.createSimpleExpiring("Run ${file.name}, then the selection") {
-                runFile(file)?.thenAccept { onEdt(generation) { execute(source, loader = loader, fromEditor = true) } }
+                runFile(file)?.thenAccept { onEdt(generation) { execute(source, loader = loader, fromEditor = true, file = editorFile) } }
             })
             .notify(project)
     }

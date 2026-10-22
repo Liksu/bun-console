@@ -585,3 +585,35 @@ test("code run from the editor does not run a context file to read its names", a
     if (directory.startsWith(tmpdir().replaceAll("\\", "/")) || directory.startsWith(tmpdir())) rmSync(directory, { recursive: true, force: true });
   }
 }, 15000);
+
+test("code run from the editor reads a file that has not run from its declarations (skeleton)", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "bun-console-skeleton-"));
+  const ide = (name) => join(directory, name).replaceAll("\\", "/");
+  writeFileSync(ide("dep.ts"), "globalThis.depRuns = (globalThis.depRuns ?? 0) + 1;\nexport const dep: number = 5;");
+  const source = "import { dep } from './dep';\nvar a: number = 0;\nfunction build(): number { return ++a + dep; }\nconst db = connect();\n" +
+    "for (let i = 0; i < 10; i++) a++;\nconsole.log('file ran');\nfunction connect() { return {}; }\n";
+  writeFileSync(ide("scratch.ts"), source);
+  // As the IDE builds it: the loop and the log are spaces, db is declared without its value.
+  const skeleton = (body) => ({ path: ide("scratch.ts"), source: body, names: ["build", "connect", "a"] });
+  const first = "import { dep } from './dep';\nvar a: number = 0;\nfunction build(): number { return ++a + dep; }\nlet   db            ;\n" +
+    "\n\nfunction connect() { return {}; }\n;export { build, connect, a, db };\n";
+  const runtime = await start();
+  const fromEditor = (code, body = first) => runtime.request("eval", { code, withoutRunning: true, skeleton: skeleton(body) });
+  try {
+    await runtime.request("load", { path: ide("scratch.ts"), declared: ["a", "build", "db", "connect"] });
+    expect((await fromEditor("a + 12")).text).toBe("12");
+    expect((await fromEditor("build()")).text).toBe("6");
+    expect((await fromEditor("a")).text).toBe("1"); // the skeleton keeps its state between selections
+    await expect(fromEditor("db")).rejects.toThrow("db is from scratch.ts, which has not run yet");
+    expect(runtime.stdout()).not.toContain("file ran");
+    // The file changed: a new skeleton starts from the file's initial values again.
+    expect((await fromEditor("a", first.replace("var a: number = 0;", "var a: number = 7;"))).text).toBe("7");
+    // Once the file runs, editor code reads that run.
+    expect((await runtime.request("eval", { code: "a" })).text).toBe("10");
+    expect((await fromEditor("a")).text).toBe("10");
+    expect((await runtime.request("eval", { code: "globalThis.depRuns" })).text).toBe("1");
+  } finally {
+    await runtime.stop();
+    if (directory.startsWith(tmpdir())) rmSync(directory, { recursive: true, force: true });
+  }
+}, 15000);
