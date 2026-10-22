@@ -60,7 +60,7 @@ If you have used the developer console of a browser, most of it will feel famili
 
 | Component | Requirement |
 | --- | --- |
-| IDE | WebStorm, IntelliJ IDEA Ultimate or PhpStorm 2026.2 or newer (verified); other JetBrains IDEs with JavaScript support (PyCharm Professional, GoLand, RubyMine, …) should work too |
+| IDE | WebStorm, IntelliJ IDEA Ultimate, PhpStorm, PyCharm or GoLand 2026.2 or newer (verified); other JetBrains IDEs with JavaScript support (RubyMine, Rider, …) should work too |
 | Runtime | [Bun](https://bun.sh/docs/installation) 1.4 or newer — console code runs on it |
 | Debugger (optional) | The **Bun** plugin (bundled with WebStorm; in IntelliJ IDEA install it from *Settings → Plugins → Marketplace*) and a Node.js interpreter configured in the IDE — the Bun debug adapter runs on Node.js |
 
